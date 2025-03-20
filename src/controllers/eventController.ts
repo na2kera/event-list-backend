@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { RequestHandler } from "express";
 import prisma from "../config/prisma";
 
-export const getEvents = async (
+export const getEvents: RequestHandler = async (
   _req: Request,
   res: Response,
   next: NextFunction
@@ -55,7 +55,8 @@ export const getEventById: RequestHandler = async (req, res, next) => {
     });
 
     if (!event) {
-      return res.status(404).json({ error: "Event not found" });
+      res.status(404).json({ error: "Event not found" });
+      return;
     }
 
     res.json(event);
