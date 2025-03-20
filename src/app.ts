@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import speakerRoutes from "./routes/speakerRoutes";
+import eventRoutes from "./routes/eventRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 
 dotenv.config();
@@ -14,6 +15,7 @@ app.use(express.json());
 
 // Routes
 app.use("/api/speakers", speakerRoutes);
+app.use("/api/events", eventRoutes);
 
 // Error handling
 app.use(errorHandler);
