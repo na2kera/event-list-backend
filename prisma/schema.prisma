@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  website     String?
+  email       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  events      Event[]
+}
+
+model Event {
+  id             String          @id @default(cuid())
+  title          String
+  description    String?
+  eventDate      DateTime
+  startTime      String
+  endTime        String?
+  venue          String
+  address        String?
+  location       String?
+  detailUrl      String?
+  organizationId String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  image          String?
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  categories     EventCategory[]
+  skills         EventSkill[]
+  speakers       EventSpeaker[]
+
+  @@index([organizationId])
+}
+
+model EventSkill {
+  id        String   @id @default(cuid())
+  name      String
+  eventId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+model Speaker {
+  id          String         @id @default(cuid())
+  name        String
+  occupation  String
+  affiliation String
+  bio         String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  events      EventSpeaker[]
+}
+
+model EventSpeaker {
+  id        String   @id @default(cuid())
+  eventId   String
+  speakerId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  speaker   Speaker  @relation(fields: [speakerId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([speakerId])
+}
+
+model Category {
+  id        String          @id @default(cuid())
+  name      String          @unique
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  events    EventCategory[]
+}
+
+model EventCategory {
+  id         String   @id @default(cuid())
+  eventId    String
+  categoryId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([categoryId])
+}
+
+model Account {
+  id                String  @id
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  User              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  Account       Account[]
+  Session       Session[]
+}
