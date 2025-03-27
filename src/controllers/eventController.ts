@@ -36,6 +36,8 @@ export const getEvents: RequestHandler = async (
 export const getEventById: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
+    
+    // イベント詳細をリレーションデータも含めて取得
     const event = await prisma.event.findUnique({
       where: { id },
       include: {
@@ -55,13 +57,26 @@ export const getEventById: RequestHandler = async (req, res, next) => {
     });
 
     if (!event) {
-      res.status(404).json({ error: "Event not found" });
+      res.status(404).json({ 
+        success: false, 
+        error: "Event not found", 
+        message: "指定されたイベントが見つかりませんでした" 
+      });
       return;
     }
 
-    res.json(event);
+    // フロントエンドの要件に合わせたレスポンス形式
+    res.status(200).json({
+      success: true,
+      data: event
+    });
   } catch (error) {
-    next(error);
+    console.error('イベント詳細取得エラー:', error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: "イベント詳細の取得中にエラーが発生しました"
+    });
   }
 };
 
