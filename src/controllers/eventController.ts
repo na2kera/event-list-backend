@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { RequestHandler } from "express";
 import prisma from "../config/prisma";
+import { Prisma } from "@prisma/client";
 
 export const getEvents: RequestHandler = async (
   _req: Request,
@@ -131,5 +132,128 @@ export const createEvent: RequestHandler = async (req, res, next) => {
     res.json(event);
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * イベント検索API
+ * 複数の検索条件に対応し、条件に合致するイベントを返す
+ */
+export const searchEvents: RequestHandler = async (req, res, next) => {
+  try {
+    const {
+      keyword,           // タイトルや説明文のキーワード検索
+      startDate,         // 開始日
+      endDate,           // 終了日
+      categories,        // カテゴリID（複数可）
+      skills,            // スキル名（複数可）
+      location,          // 開催場所
+      organizationId     // 主催団体ID
+    } = req.query;
+
+    // 検索条件を構築
+    const where: Prisma.EventWhereInput = {};
+    
+    // キーワード検索（タイトルまたは説明文に含まれる）
+    if (keyword && typeof keyword === 'string') {
+      where.OR = [
+        { title: { contains: keyword, mode: 'insensitive' } },
+        { description: { contains: keyword, mode: 'insensitive' } }
+      ];
+    }
+    
+    // 日付範囲検索
+    if (startDate || endDate) {
+      where.eventDate = {};
+      
+      if (startDate && typeof startDate === 'string') {
+        where.eventDate.gte = new Date(startDate);
+      }
+      
+      if (endDate && typeof endDate === 'string') {
+        where.eventDate.lte = new Date(endDate);
+      }
+    }
+    
+    // 開催場所検索
+    if (location && typeof location === 'string') {
+      where.OR = [
+        ...(where.OR || []),
+        { venue: { contains: location, mode: 'insensitive' } },
+        { address: { contains: location, mode: 'insensitive' } },
+        { location: { contains: location, mode: 'insensitive' } }
+      ];
+    }
+    
+    // 主催団体検索
+    if (organizationId && typeof organizationId === 'string') {
+      where.organizationId = organizationId;
+    }
+    
+    // カテゴリ検索（複数指定可能）
+    if (categories) {
+      const categoryIds = Array.isArray(categories) 
+        ? categories 
+        : [categories];
+      
+      if (categoryIds.length > 0) {
+        where.categories = {
+          some: {
+            categoryId: { in: categoryIds as string[] }
+          }
+        };
+      }
+    }
+    
+    // スキル検索（複数指定可能）
+    if (skills) {
+      const skillNames = Array.isArray(skills) 
+        ? skills 
+        : [skills];
+      
+      if (skillNames.length > 0) {
+        where.skills = {
+          some: {
+            name: { in: skillNames as string[] }
+          }
+        };
+      }
+    }
+
+    // イベントを検索
+    const events = await prisma.event.findMany({
+      where,
+      include: {
+        organization: true,
+        skills: true,
+        speakers: {
+          include: {
+            speaker: true,
+          },
+        },
+        categories: {
+          include: {
+            category: true,
+          },
+        },
+      },
+      orderBy: {
+        eventDate: 'asc',
+      },
+    });
+
+    // フロントエンドの要件に合わせたレスポンス形式
+    res.status(200).json({
+      success: true,
+      data: events,
+      count: events.length
+    });
+  } catch (error) {
+    console.error('イベント検索エラー:', error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: "イベント検索中にエラーが発生しました"
+    });
   }
 };
