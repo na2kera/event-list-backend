@@ -35,6 +35,7 @@ model Event {
   updatedAt      DateTime        @updatedAt
   image          String?
   format         EventFormat     @default(OFFLINE)
+  difficulty     DifficultyLevel @default(FOR_EVERYONE)
   organization   Organization    @relation(fields: [organizationId], references: [id])
   categories     EventCategory[]
   skills         EventSkill[]
@@ -139,4 +140,11 @@ enum EventFormat {
   ONLINE
   OFFLINE
   HYBRID
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  FOR_EVERYONE
 }
