@@ -41,6 +41,7 @@ model Event {
   categories     EventCategory[]
   skills         EventSkill[]
   speakers       EventSpeaker[]
+  goals          EventGoal[]
 
   @@index([organizationId])
 }
@@ -148,4 +149,21 @@ enum DifficultyLevel {
   INTERMEDIATE
   ADVANCED
   FOR_EVERYONE
+}
+
+enum GoalType {
+  IMPROVE_SKILLS
+  EXPERIENCE_TEAM_DEV
+  CREATE_PORTFOLIO
+}
+
+model EventGoal {
+  id        String    @id @default(cuid())
+  goalType  GoalType
+  eventId   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
 }
