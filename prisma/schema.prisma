@@ -34,6 +34,7 @@ model Event {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   image          String?
+  format         EventFormat     @default(OFFLINE)
   organization   Organization    @relation(fields: [organizationId], references: [id])
   categories     EventCategory[]
   skills         EventSkill[]
@@ -132,4 +133,10 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+}
+
+enum EventFormat {
+  ONLINE
+  OFFLINE
+  HYBRID
 }
