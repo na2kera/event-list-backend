@@ -34,10 +34,14 @@ model Event {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   image          String?
+  format         EventFormat     @default(OFFLINE)
+  difficulty     DifficultyLevel @default(FOR_EVERYONE)
+  price          Int             @default(0)
   organization   Organization    @relation(fields: [organizationId], references: [id])
   categories     EventCategory[]
   skills         EventSkill[]
   speakers       EventSpeaker[]
+  goals          EventGoal[]
 
   @@index([organizationId])
 }
@@ -132,4 +136,34 @@ model User {
   image         String?
   accounts      Account[]
   sessions      Session[]
+}
+
+enum EventFormat {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  FOR_EVERYONE
+}
+
+enum GoalType {
+  IMPROVE_SKILLS
+  EXPERIENCE_TEAM_DEV
+  CREATE_PORTFOLIO
+}
+
+model EventGoal {
+  id        String    @id @default(cuid())
+  goalType  GoalType
+  eventId   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
 }
