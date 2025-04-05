@@ -12,13 +12,40 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // CORS設定を強化
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "https://event-list-frontend.vercel.app", // 本番環境のフロントエンドURL
+  process.env.FRONTEND_URL || "", // 環境変数からフロントエンドURLを取得
+].filter(Boolean); // 空の値を除外
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // 開発環境では全てのオリジンを許可
+      if (process.env.NODE_ENV !== "production") {
+        return callback(null, true);
+      }
+
+      // 本番環境では許可リストのみ許可
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  })
+);
+
 app.use(express.json());
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 // Routes
 app.use("/api/speakers", speakerRoutes);
