@@ -4,9 +4,10 @@ import dotenv from "dotenv";
 import speakerRoutes from "./routes/speakerRoutes";
 import eventRoutes from "./routes/eventRoutes";
 import authRoutes from "./routes/authRoutes";
+import ragRoutes from "./routes/ragRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 
-dotenv.config();
+dotenv.config({ path: process.env.NODE_ENV === 'production' ? '.env' : '.env.local' });
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -51,6 +52,7 @@ app.get("/health", (req, res) => {
 app.use("/api/speakers", speakerRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/rag", ragRoutes);
 
 // Error handling
 app.use(errorHandler);
