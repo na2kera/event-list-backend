@@ -5,11 +5,13 @@ import speakerRoutes from "./routes/speakerRoutes";
 import eventRoutes from "./routes/eventRoutes";
 import authRoutes from "./routes/authRoutes";
 import { errorHandler } from "./middleware/errorHandler";
+import { PrismaClient } from "@prisma/client";
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
+const prisma = new PrismaClient();
 
 // CORS設定を強化
 const allowedOrigins = [
@@ -45,6 +47,25 @@ app.use(express.json());
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+// Database health check endpoint
+app.get("/health/db", async (req, res) => {
+  try {
+    // データベースに接続を試みる
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({
+      status: "ok",
+      database: "connected",
+    });
+  } catch (error: unknown) {
+    console.error("Database connection error:", error);
+    res.status(500).json({
+      status: "error",
+      database: "disconnected",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
 });
 
 // Routes
