@@ -37,6 +37,7 @@ model Event {
   format         EventFormat     @default(OFFLINE)
   difficulty     DifficultyLevel @default(FOR_EVERYONE)
   price          Int             @default(0)
+  eventType      EventType       @default(WORKSHOP)
   organization   Organization    @relation(fields: [organizationId], references: [id])
   categories     EventCategory[]
   skills         EventSkill[]
@@ -149,6 +150,13 @@ enum DifficultyLevel {
   INTERMEDIATE
   ADVANCED
   FOR_EVERYONE
+}
+
+enum EventType {
+  HACKATHON
+  WORKSHOP
+  CONTEST
+  LIGHTNING_TALK
 }
 
 enum GoalType {
