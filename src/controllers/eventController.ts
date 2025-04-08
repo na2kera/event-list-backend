@@ -4,12 +4,34 @@ import prisma from "../config/prisma";
 import { Prisma } from "@prisma/client";
 
 export const getEvents: RequestHandler = async (
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
   try {
+    // クエリパラメータからイベントタイプを取得
+    const { eventType } = req.query;
+    
+    // フィルタリング条件を構築
+    const where: any = {};
+    
+    // イベントタイプが指定されている場合、フィルタ条件に追加
+    if (eventType && eventType !== 'すべて') {
+      // 日本語からEnum値へのマッピング
+      const eventTypeMapping: Record<string, string> = {
+        'ハッカソン': 'HACKATHON',
+        'ワークショップ': 'WORKSHOP',
+        'コンテスト': 'CONTEST',
+        'LT会': 'LIGHTNING_TALK'
+      };
+      
+      // マッピングされた値があればそれを使用、なければそのまま使用
+      const eventTypeValue = eventTypeMapping[eventType as string] || eventType;
+      where.eventType = eventTypeValue;
+    }
+    
     const events = await prisma.event.findMany({
+      where,
       include: {
         organization: true,
         skills: true,
@@ -28,9 +50,19 @@ export const getEvents: RequestHandler = async (
         eventDate: "asc",
       },
     });
-    res.json(events);
+    
+    // フロントエンドの要件に合わせたレスポンス形式
+    res.status(200).json({
+      success: true,
+      data: events
+    });
   } catch (error) {
-    next(error);
+    console.error('イベント一覧取得エラー:', error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: "サーバー内部でエラーが発生しました"
+    });
   }
 };
 
