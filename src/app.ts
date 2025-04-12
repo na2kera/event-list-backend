@@ -7,7 +7,9 @@ import authRoutes from "./routes/authRoutes";
 import ragRoutes from "./routes/ragRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 
-dotenv.config({ path: process.env.NODE_ENV === 'production' ? '.env' : '.env.local' });
+dotenv.config({
+  path: process.env.NODE_ENV === "production" ? ".env" : ".env.local",
+});
 
 const app = express();
 const port = process.env.PORT || 3001;

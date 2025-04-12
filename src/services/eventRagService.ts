@@ -15,6 +15,8 @@ import {
   StructuredOutputParser,
 } from "@langchain/core/output_parsers";
 import { z } from "zod";
+import { getAllEvents } from "../utils/eventUtils";
+import prisma from "../config/prisma";
 
 // モックイベントデータを読み込む
 const mockEventsPath = path.join(__dirname, "../data/mockEvents.json");
@@ -66,6 +68,9 @@ const hydePrompt = PromptTemplate.fromTemplate(`
   - 居住地: {location}
   - 技術スタック: {skills}
   - 興味のあるトピック: {interests}
+  - 技術レベル: {skillLevel}
+  - 目標: {goals}
+  
   
   ---
   【イベントDBの形式】
@@ -102,41 +107,13 @@ const eventRecommendationSchema = z.object({
   relevanceReason: z.string().describe("このイベントがユーザーに関連する理由"),
 });
 
-// 構造化出力パーサーの作成
-const outputParser = StructuredOutputParser.fromZodSchema(
-  eventRecommendationSchema
-);
-
-// パーサーのフォーマット手順を取得
-const formatInstructions = outputParser.getFormatInstructions();
-
-// 検索結果のフォーマット用プロンプト
-const resultFormatterPrompt = PromptTemplate.fromTemplate(`
-以下のユーザー情報と検索結果に基づいて、最も関連性の高いイベントを1つ選択してください。
-
-ユーザー情報:
-- 居住地: {location}
-- 技術スタック: {skills}
-- 興味のあるトピック: {interests}
-
-検索結果:
-{searchResults}
-
-各イベントについて、ユーザーとの関連性を評価し、最も関連性の高いイベントを1つ選択してください。
-
-評価基準:
-1. ユーザーの技術スタックとの関連性
-2. ユーザーの興味あるトピックとの関連性
-3. イベントの場所（オンラインまたはユーザーの居住地に近いか）
-
-{format_instructions}
-`);
-
-// ユーザー情報に基づいてイベントを検索するRAGチェーン
-export const searchEventsForUser = async (
+// ユーザー情報に基づいてイベントをランク付けするRAGチェーン
+export const rankEventsForUser = async (
   location: string,
   skills: string[],
-  interests: string[]
+  interests: string[],
+  skillLevel: "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
+  goals: string[]
 ) => {
   // ベクトルストアが初期化されていない場合は初期化
   if (!vectorStore) {
@@ -148,6 +125,8 @@ export const searchEventsForUser = async (
     location,
     skills: skills.join(", "),
     interests: interests.join(", "),
+    skillLevel,
+    goals: goals.join(", "),
   };
 
   // HyDEチェーン: ユーザー情報からクエリを生成
@@ -157,92 +136,146 @@ export const searchEventsForUser = async (
     new StringOutputParser(),
   ]);
 
-  // 検索チェーン: 生成されたクエリでベクトル検索
+  // 検索チェーン: DBからすべてのイベントを取得し、HyDEクエリで最近傍探索
   const retrievalChain = async (query: string) => {
-    const results = await vectorStore.similaritySearch(query, 5);
-    return {
-      searchResults: results
-        .map(
-          (doc) =>
-            `ID: ${doc.metadata.id}\nタイトル: ${doc.metadata.title}\n説明: ${doc.pageContent}\n場所: ${doc.metadata.location}\n難易度: ${doc.metadata.difficulty}\nカテゴリ: ${doc.metadata.categories}\nスキル: ${doc.metadata.skills}\n\n`
-        )
-        .join(""),
-      format_instructions: formatInstructions, // フォーマット手順を追加
-    };
+    // DBからすべてのイベントを取得
+
+    const allEvents = await getAllEvents();
+    console.log(`DBから取得したイベント数: ${allEvents.length}`);
+
+    // イベントをドキュメント形式に変換
+    const eventDocs = allEvents.map((event) => {
+      // カテゴリとスキルを安全に取得
+      let categories = "";
+      let skills = "";
+      let speakers = "";
+      let goals = "";
+
+      try {
+        // 安全にデータを取得
+        if (event.categories && Array.isArray(event.categories)) {
+          categories = event.categories
+            .map((ec) => {
+              if (
+                ec &&
+                typeof ec === "object" &&
+                "category" in ec &&
+                ec.category &&
+                typeof ec.category === "object" &&
+                "name" in ec.category
+              ) {
+                return ec.category.name;
+              }
+              return "";
+            })
+            .filter(Boolean)
+            .join(", ");
+        }
+
+        if (event.skills && Array.isArray(event.skills)) {
+          skills = event.skills
+            .map((skill) =>
+              skill && typeof skill === "object" && "name" in skill
+                ? skill.name
+                : ""
+            )
+            .filter(Boolean)
+            .join(", ");
+        }
+
+        if (event.speakers && Array.isArray(event.speakers)) {
+          speakers = event.speakers
+            .map((es) => {
+              if (
+                es &&
+                typeof es === "object" &&
+                "speaker" in es &&
+                es.speaker &&
+                typeof es.speaker === "object" &&
+                "name" in es.speaker
+              ) {
+                return es.speaker.name;
+              }
+              return "";
+            })
+            .filter(Boolean)
+            .join(", ");
+        }
+
+        if (event.goals && Array.isArray(event.goals)) {
+          goals = event.goals
+            .map((goal) =>
+              goal && typeof goal === "object" && "goalType" in goal
+                ? goal.goalType
+                : ""
+            )
+            .filter(Boolean)
+            .join(", ");
+        }
+      } catch (error) {
+        console.error("イベントデータのフォーマットエラー:", error);
+      }
+
+      // ドキュメントを作成
+      return new Document({
+        pageContent: `${event.title}\n${event.description || ""}`,
+        metadata: {
+          id: event.id,
+          title: event.title,
+          eventDate: event.eventDate,
+          location: event.location || "",
+          format: event.format,
+          difficulty: event.difficulty,
+          categories: categories,
+          skills: skills,
+          speakers: speakers,
+          goals: goals,
+        },
+      });
+    });
+
+    // クエリを使って最近傍探索
+    // 一時的なベクトルストアを作成
+    const tempVectorStore = await MemoryVectorStore.fromDocuments(
+      eventDocs,
+      embeddings
+    );
+    const results = await tempVectorStore.similaritySearch(query, 50); // 上位50件を近い順で取得
+
+    // 結果からイベントIDのリストだけを返す
+    const eventIds = results.map((doc) => doc.metadata.id);
+    return eventIds;
   };
 
-  // 結果フォーマットチェーン: 検索結果をランク付け
-  const formatterChain = RunnableSequence.from([
-    resultFormatterPrompt,
-    llm,
-    outputParser, // 構造化出力パーサーを使用
-  ]);
+  // 全体のRAG処理 - HyDEクエリ生成と最近傍探索のみを使用
+  const processUserQuery = async (input: typeof userInfo) => {
+    // HyDEクエリを生成
+    const hydeQuery = await hydeChain.invoke(input);
+    console.log("生成されたHyDEクエリ:", hydeQuery);
 
-  // 全体のRAGチェーン
-  const ragChain = RunnableSequence.from([
-    // ユーザー情報からHyDEクエリを生成
-    async (input: typeof userInfo) => {
-      const hydeQuery = await hydeChain.invoke(input);
-      console.log("生成されたHyDEクエリ:", hydeQuery);
+    // クエリを使って最近傍探索を実行し、イベントIDのリストを取得
+    const eventIds = await retrievalChain(hydeQuery);
+    console.log("ランキングされたイベントID:", eventIds);
 
-      // クエリを使って検索
-      const retrievalResults = await retrievalChain(hydeQuery);
+    // イベントIDのリストをそのまま返す
+    return eventIds;
+  };
 
-      // 検索結果とユーザー情報を結合
-      return {
-        ...input,
-        ...retrievalResults,
-      };
-    },
-    // 検索結果をフォーマット
-    formatterChain,
-    // 構造化出力パーサーの結果を処理
-    async (result) => {
-      try {
-        // resultはすでにJSONオブジェクトにパースされている
-        console.log("構造化されたレスポンス:", result);
-
-        // LLMが選んだイベントのIDを保持
-        return [result];
-      } catch (error) {
-        console.error("レスポンス処理エラー:", error);
-        return [];
-      }
-    },
-  ]);
-
-  // RAGチェーンを実行
+  // ユーザークエリを処理
   try {
-    // LLMが選んだ最適なイベントを取得
-    const llmResult = await ragChain.invoke(userInfo);
+    // ユーザー情報からイベントIDのリストを取得
+    const eventIds = await processUserQuery(userInfo);
 
     // 結果が空の場合は空配列を返す
-    if (!llmResult || llmResult.length === 0) {
+    if (!eventIds || eventIds.length === 0) {
       console.log("適合するイベントが見つかりませんでした");
       return [];
     }
 
-    // LLMが選択したイベントのIDを取得
-    const selectedEvent = llmResult[0];
-    console.log("選択されたイベントID:", selectedEvent.id);
+    // 上位のイベントIDを取得
+    console.log("選択されたイベントID:", eventIds[0]);
 
-    // 元のイベントデータをIDで検索
-    const originalEvent = mockEvents.find(
-      (e: any) => e.id === selectedEvent.id
-    );
-    if (!originalEvent) {
-      console.log(`ID ${selectedEvent.id} のイベントが見つかりません`);
-      return [selectedEvent]; // 元データが見つからない場合はランキング情報のみを返す
-    }
-
-    // 元のイベントデータとランキング情報を結合したオブジェクトを1つだけ返す
-    return [
-      {
-        ...originalEvent,
-        relevanceScore: selectedEvent.relevanceScore,
-        relevanceReason: selectedEvent.relevanceReason,
-      },
-    ];
+    return eventIds;
   } catch (error) {
     console.error("RAGチェーン実行エラー:", error);
     throw error;

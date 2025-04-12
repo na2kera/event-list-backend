@@ -37,11 +37,12 @@ model Event {
   format         EventFormat     @default(OFFLINE)
   difficulty     DifficultyLevel @default(FOR_EVERYONE)
   price          Int             @default(0)
+  eventType      EventType       @default(WORKSHOP)
   organization   Organization    @relation(fields: [organizationId], references: [id])
   categories     EventCategory[]
+  goals          EventGoal[]
   skills         EventSkill[]
   speakers       EventSpeaker[]
-  goals          EventGoal[]
 
   @@index([organizationId])
 }
@@ -138,6 +139,17 @@ model User {
   sessions      Session[]
 }
 
+model EventGoal {
+  id        String   @id @default(cuid())
+  goalType  GoalType
+  eventId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
 enum EventFormat {
   ONLINE
   OFFLINE
@@ -157,13 +169,9 @@ enum GoalType {
   CREATE_PORTFOLIO
 }
 
-model EventGoal {
-  id        String    @id @default(cuid())
-  goalType  GoalType
-  eventId   String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@index([eventId])
+enum EventType {
+  HACKATHON
+  WORKSHOP
+  CONTEST
+  LIGHTNING_TALK
 }

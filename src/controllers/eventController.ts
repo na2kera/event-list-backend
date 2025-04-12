@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { RequestHandler } from "express";
 import prisma from "../config/prisma";
 import { Prisma } from "@prisma/client";
+import { recommendEventsForUser } from "../services/recommendEventsService";
 
 export const getEvents: RequestHandler = async (
   _req: Request,
@@ -37,7 +38,7 @@ export const getEvents: RequestHandler = async (
 export const getEventById: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
-    
+
     // イベント詳細をリレーションデータも含めて取得
     const event = await prisma.event.findUnique({
       where: { id },
@@ -58,10 +59,10 @@ export const getEventById: RequestHandler = async (req, res, next) => {
     });
 
     if (!event) {
-      res.status(404).json({ 
-        success: false, 
-        error: "Event not found", 
-        message: "指定されたイベントが見つかりませんでした" 
+      res.status(404).json({
+        success: false,
+        error: "Event not found",
+        message: "指定されたイベントが見つかりませんでした",
       });
       return;
     }
@@ -69,14 +70,14 @@ export const getEventById: RequestHandler = async (req, res, next) => {
     // フロントエンドの要件に合わせたレスポンス形式
     res.status(200).json({
       success: true,
-      data: event
+      data: event,
     });
   } catch (error) {
-    console.error('イベント詳細取得エラー:', error);
+    console.error("イベント詳細取得エラー:", error);
     res.status(500).json({
       success: false,
       error: "Internal server error",
-      message: "イベント詳細の取得中にエラーが発生しました"
+      message: "イベント詳細の取得中にエラーが発生しました",
     });
   }
 };
@@ -142,80 +143,76 @@ export const createEvent: RequestHandler = async (req, res, next) => {
 export const searchEvents: RequestHandler = async (req, res, next) => {
   try {
     const {
-      keyword,           // タイトルや説明文のキーワード検索
-      startDate,         // 開始日
-      endDate,           // 終了日
-      categories,        // カテゴリID（複数可）
-      skills,            // スキル名（複数可）
-      location,          // 開催場所
-      organizationId     // 主催団体ID
+      keyword, // タイトルや説明文のキーワード検索
+      startDate, // 開始日
+      endDate, // 終了日
+      categories, // カテゴリID（複数可）
+      skills, // スキル名（複数可）
+      location, // 開催場所
+      organizationId, // 主催団体ID
     } = req.query;
 
     // 検索条件を構築
     const where: Prisma.EventWhereInput = {};
-    
+
     // キーワード検索（タイトルまたは説明文に含まれる）
-    if (keyword && typeof keyword === 'string') {
+    if (keyword && typeof keyword === "string") {
       where.OR = [
-        { title: { contains: keyword, mode: 'insensitive' } },
-        { description: { contains: keyword, mode: 'insensitive' } }
+        { title: { contains: keyword, mode: "insensitive" } },
+        { description: { contains: keyword, mode: "insensitive" } },
       ];
     }
-    
+
     // 日付範囲検索
     if (startDate || endDate) {
       where.eventDate = {};
-      
-      if (startDate && typeof startDate === 'string') {
+
+      if (startDate && typeof startDate === "string") {
         where.eventDate.gte = new Date(startDate);
       }
-      
-      if (endDate && typeof endDate === 'string') {
+
+      if (endDate && typeof endDate === "string") {
         where.eventDate.lte = new Date(endDate);
       }
     }
-    
+
     // 開催場所検索
-    if (location && typeof location === 'string') {
+    if (location && typeof location === "string") {
       where.OR = [
         ...(where.OR || []),
-        { venue: { contains: location, mode: 'insensitive' } },
-        { address: { contains: location, mode: 'insensitive' } },
-        { location: { contains: location, mode: 'insensitive' } }
+        { venue: { contains: location, mode: "insensitive" } },
+        { address: { contains: location, mode: "insensitive" } },
+        { location: { contains: location, mode: "insensitive" } },
       ];
     }
-    
+
     // 主催団体検索
-    if (organizationId && typeof organizationId === 'string') {
+    if (organizationId && typeof organizationId === "string") {
       where.organizationId = organizationId;
     }
-    
+
     // カテゴリ検索（複数指定可能）
     if (categories) {
-      const categoryIds = Array.isArray(categories) 
-        ? categories 
-        : [categories];
-      
+      const categoryIds = Array.isArray(categories) ? categories : [categories];
+
       if (categoryIds.length > 0) {
         where.categories = {
           some: {
-            categoryId: { in: categoryIds as string[] }
-          }
+            categoryId: { in: categoryIds as string[] },
+          },
         };
       }
     }
-    
+
     // スキル検索（複数指定可能）
     if (skills) {
-      const skillNames = Array.isArray(skills) 
-        ? skills 
-        : [skills];
-      
+      const skillNames = Array.isArray(skills) ? skills : [skills];
+
       if (skillNames.length > 0) {
         where.skills = {
           some: {
-            name: { in: skillNames as string[] }
-          }
+            name: { in: skillNames as string[] },
+          },
         };
       }
     }
@@ -238,7 +235,7 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
         },
       },
       orderBy: {
-        eventDate: 'asc',
+        eventDate: "asc",
       },
     });
 
@@ -246,14 +243,38 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: events,
-      count: events.length
+      count: events.length,
     });
   } catch (error) {
-    console.error('イベント検索エラー:', error);
+    console.error("イベント検索エラー:", error);
     res.status(500).json({
       success: false,
       error: "Internal server error",
-      message: "イベント検索中にエラーが発生しました"
+      message: "イベント検索中にエラーが発生しました",
     });
+  }
+};
+
+export const recommendEvents: RequestHandler = async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+    if (typeof userId !== "string") {
+      res.status(400).json({ error: "Invalid parameters" });
+      return;
+    }
+    try {
+      await recommendEventsForUser(userId);
+
+      // 取得した活動データをそのままJSON形式で返す
+      res
+        .status(200)
+        .json({ success: true, message: "イベント推薦の処理が完了しました" });
+    } catch (error) {
+      console.error("Error in recommendEvents:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  } catch (error) {
+    console.error("Error in recommendEvents:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
