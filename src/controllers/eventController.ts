@@ -289,3 +289,143 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
     });
   }
 };
+
+/**
+ * イベント更新API
+ * 指定されたIDのイベントを更新する
+ * 関連するスキル、カテゴリ、スピーカーなども更新可能
+ */
+export const updateEvent: RequestHandler = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    // 更新対象のイベントが存在するか確認
+    const existingEvent = await prisma.event.findUnique({
+      where: { id },
+      include: {
+        skills: true,
+        categories: true,
+        speakers: true
+      }
+    });
+
+    if (!existingEvent) {
+      res.status(404).json({ 
+        success: false, 
+        error: "Event not found", 
+        message: "更新対象のイベントが見つかりませんでした" 
+      });
+      return;
+    }
+
+    // トランザクション内で関連データも含めて更新
+    const updatedEvent = await prisma.$transaction(async (prismaClient) => {
+      // 1. 既存の関連データを削除（スキル、カテゴリ、スピーカー）
+      if (req.body.skills !== undefined) {
+        await prismaClient.eventSkill.deleteMany({
+          where: { eventId: id }
+        });
+      }
+      
+      if (req.body.categories !== undefined) {
+        await prismaClient.eventCategory.deleteMany({
+          where: { eventId: id }
+        });
+      }
+      
+      if (req.body.speakers !== undefined) {
+        await prismaClient.eventSpeaker.deleteMany({
+          where: { eventId: id }
+        });
+      }
+      
+      // 2. イベント本体の更新データを準備
+      const eventUpdateData: any = {};
+      
+      // イベント基本情報の更新（送信されたフィールドのみ更新）
+      const eventFields = [
+        'title', 'description', 'eventDate', 'startTime', 'endTime',
+        'venue', 'address', 'location', 'detailUrl', 'image',
+        'organizationId', 'format', 'difficulty', 'price', 'eventType'
+      ];
+      
+      eventFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          // 日付フィールドは特別処理
+          if (field === 'eventDate' && req.body[field]) {
+            eventUpdateData[field] = new Date(req.body[field]);
+          } else {
+            eventUpdateData[field] = req.body[field];
+          }
+        }
+      });
+      
+      // 3. 関連データの作成準備
+      const createData: any = {};
+      
+      // スキルの更新
+      if (req.body.skills && Array.isArray(req.body.skills)) {
+        createData.skills = {
+          create: req.body.skills.map((skill: { name: string }) => ({
+            name: skill.name
+          }))
+        };
+      }
+      
+      // カテゴリの更新
+      if (req.body.categories && Array.isArray(req.body.categories)) {
+        createData.categories = {
+          create: req.body.categories.map((category: { categoryId: string }) => ({
+            categoryId: category.categoryId
+          }))
+        };
+      }
+      
+      // スピーカーの更新
+      if (req.body.speakers && Array.isArray(req.body.speakers)) {
+        createData.speakers = {
+          create: req.body.speakers.map((speaker: { speakerId: string }) => ({
+            speakerId: speaker.speakerId
+          }))
+        };
+      }
+      
+      // 4. イベントとその関連データを更新
+      return prismaClient.event.update({
+        where: { id },
+        data: {
+          ...eventUpdateData,
+          ...createData
+        },
+        include: {
+          organization: true,
+          skills: true,
+          speakers: {
+            include: {
+              speaker: true,
+            },
+          },
+          categories: {
+            include: {
+              category: true,
+            },
+          },
+        },
+      });
+    });
+
+    // 成功レスポンスを返す
+    res.status(200).json({
+      success: true,
+      data: updatedEvent,
+      message: "イベントが正常に更新されました"
+    });
+  } catch (error) {
+    console.error('イベント更新エラー:', error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+      message: "イベント更新中にエラーが発生しました"
+    });
+  }
+};

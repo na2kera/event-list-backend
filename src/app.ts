@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import speakerRoutes from "./routes/speakerRoutes";
 import eventRoutes from "./routes/eventRoutes";
 import authRoutes from "./routes/authRoutes";
+import categoryRoutes from "./routes/categoryRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 import { PrismaClient } from "@prisma/client";
 
@@ -72,6 +73,7 @@ app.get("/health/db", async (req, res) => {
 app.use("/api/speakers", speakerRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/categories", categoryRoutes);
 
 // Error handling
 app.use(errorHandler);
