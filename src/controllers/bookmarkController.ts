@@ -23,7 +23,9 @@ export const addBookmark: RequestHandler = async (req, res) => {
 
     if (existing) {
       // 既にブックマーク済み
-      res.status(200).json({ success: true, alreadyBookmarked: true, bookmark: existing });
+      res
+        .status(200)
+        .json({ success: true, alreadyBookmarked: true, bookmark: existing });
       return;
     }
 
