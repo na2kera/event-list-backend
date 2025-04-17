@@ -1,5 +1,13 @@
-import prisma from '../config/prisma';
-import { Event, Category, Speaker, EventCategory, EventSkill, EventSpeaker, EventGoal } from '@prisma/client';
+import prisma from "../config/prisma";
+import {
+  Event,
+  Category,
+  Speaker,
+  EventCategory,
+  EventSkill,
+  EventSpeaker,
+  EventGoal,
+} from "@prisma/client";
 
 /**
  * すべてのイベントを取得する
@@ -9,33 +17,35 @@ import { Event, Category, Speaker, EventCategory, EventSkill, EventSpeaker, Even
 export const getAllEvents = async (includeRelations: boolean = true) => {
   try {
     // 関連データを含める場合の設定
-    const include = includeRelations ? {
-      organization: true,
-      categories: {
-        include: {
-          category: true
+    const include = includeRelations
+      ? {
+          Organization: true,
+          EventCategory: {
+            include: {
+              Category: true,
+            },
+          },
+          EventSkill: true,
+          EventSpeaker: {
+            include: {
+              Speaker: true,
+            },
+          },
+          EventGoal: true,
         }
-      },
-      skills: true,
-      speakers: {
-        include: {
-          speaker: true
-        }
-      },
-      goals: true
-    } : {};
+      : {};
 
     // Prismaでイベントを全件取得
     const events = await prisma.event.findMany({
       include,
       orderBy: {
-        eventDate: 'asc'
-      }
+        eventDate: "asc",
+      },
     });
 
     return events;
   } catch (error) {
-    console.error('イベント取得エラー:', error);
+    console.error("イベント取得エラー:", error);
     throw error;
   }
 };
@@ -46,31 +56,36 @@ export const getAllEvents = async (includeRelations: boolean = true) => {
  * @param includeRelations 関連するデータも含めるかどうか
  * @returns イベント情報、見つからない場合はnull
  */
-export const getEventById = async (eventId: string, includeRelations: boolean = true) => {
+export const getEventById = async (
+  eventId: string,
+  includeRelations: boolean = true
+) => {
   try {
     // 関連データを含める場合の設定
-    const include = includeRelations ? {
-      organization: true,
-      categories: {
-        include: {
-          category: true
+    const include = includeRelations
+      ? {
+          Organization: true,
+          EventCategory: {
+            include: {
+              Category: true,
+            },
+          },
+          EventSkill: true,
+          EventSpeaker: {
+            include: {
+              Speaker: true,
+            },
+          },
+          EventGoal: true,
         }
-      },
-      skills: true,
-      speakers: {
-        include: {
-          speaker: true
-        }
-      },
-      goals: true
-    } : {};
+      : {};
 
     // Prismaでイベントを検索
     const event = await prisma.event.findUnique({
+      include,
       where: {
-        id: eventId
+        id: eventId,
       },
-      include
     });
 
     return event;
@@ -101,23 +116,23 @@ export const getFilteredEvents = async (options: {
 
     // カテゴリでフィルタリング
     if (options.categoryIds && options.categoryIds.length > 0) {
-      where.categories = {
+      where.EventCategory = {
         some: {
-          categoryId: {
-            in: options.categoryIds
-          }
-        }
+          CategoryId: {
+            in: options.categoryIds,
+          },
+        },
       };
     }
 
     // スキルでフィルタリング
     if (options.skills && options.skills.length > 0) {
-      where.skills = {
+      where.EventSkill = {
         some: {
           name: {
-            in: options.skills
-          }
-        }
+            in: options.skills,
+          },
+        },
       };
     }
 
@@ -125,7 +140,7 @@ export const getFilteredEvents = async (options: {
     if (options.location) {
       where.location = {
         contains: options.location,
-        mode: 'insensitive'
+        mode: "insensitive",
       };
     }
 
@@ -156,15 +171,15 @@ export const getFilteredEvents = async (options: {
         {
           title: {
             contains: options.searchTerm,
-            mode: 'insensitive'
-          }
+            mode: "insensitive",
+          },
         },
         {
           description: {
             contains: options.searchTerm,
-            mode: 'insensitive'
-          }
-        }
+            mode: "insensitive",
+          },
+        },
       ];
     }
 
@@ -172,28 +187,28 @@ export const getFilteredEvents = async (options: {
     const events = await prisma.event.findMany({
       where,
       include: {
-        organization: true,
-        categories: {
+        Organization: true,
+        EventCategory: {
           include: {
-            category: true
-          }
+            Category: true,
+          },
         },
-        skills: true,
-        speakers: {
+        EventSkill: true,
+        EventSpeaker: {
           include: {
-            speaker: true
-          }
+            Speaker: true,
+          },
         },
-        goals: true
+        EventGoal: true,
       },
       orderBy: {
-        eventDate: 'asc'
-      }
+        eventDate: "asc",
+      },
     });
 
     return events;
   } catch (error) {
-    console.error('イベントフィルタリングエラー:', error);
+    console.error("イベントフィルタリングエラー:", error);
     throw error;
   }
 };

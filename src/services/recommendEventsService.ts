@@ -6,12 +6,12 @@ import {
   getMockUserById,
 } from "../utils/userUtils";
 import { getAllEvents, getFilteredEvents } from "../utils/eventUtils";
-import { rankEventsForUser } from "./eventRagService";
+import { rankEventsForUser } from "../utils/eventRag";
 
 /**
- * ユーザーIDに基づいてイベントを推薄する
+ * ユーザーIDに基づいてイベントをレコメンドする
  * @param userId ユーザーID
- * @returns 推薄されたイベントの配列
+ * @returns レコメンドされたイベントの配列
  */
 export const recommendEventsForUser = async (userId: string) => {
   try {
@@ -20,9 +20,9 @@ export const recommendEventsForUser = async (userId: string) => {
     console.log(`全イベント数: ${allEvents.length}`);
 
     // ユーザー情報を取得
-    const mockUser = getMockUserById(userId);
+    const user = await getUserById(userId);
 
-    if (!mockUser) {
+    if (!user) {
       throw new Error(`ユーザー ${userId} が見つかりません。`);
     }
 
@@ -36,13 +36,13 @@ export const recommendEventsForUser = async (userId: string) => {
 
     console.log(`フィルタリング後のイベント数: ${filteredEvents.length}`);
 
-    // フィルタリングされたイベントが少ない場合は、RAGを使用して推薄
+    // フィルタリングされたイベントが少ない場合は、RAGを使用して推奨
     const recommendedEventIds = await rankEventsForUser(
-      mockUser.location,
-      mockUser.techStack,
-      mockUser.interests,
-      mockUser.skillLevel,
-      mockUser.goals
+      user.place,
+      user.stack,
+      user.tag,
+      user.level,
+      user.goal
     );
 
     return recommendedEventIds;

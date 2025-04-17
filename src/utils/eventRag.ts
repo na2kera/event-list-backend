@@ -15,12 +15,25 @@ import {
   StructuredOutputParser,
 } from "@langchain/core/output_parsers";
 import { z } from "zod";
-import { getAllEvents } from "../utils/eventUtils";
+import { getAllEvents } from "./eventUtils";
 import prisma from "../config/prisma";
 
 // モックイベントデータを読み込む
-const mockEventsPath = path.join(__dirname, "../data/mockEvents.json");
-const mockEvents = JSON.parse(fs.readFileSync(mockEventsPath, "utf8"));
+// ファイルが存在しない場合は空配列を使用
+let mockEvents: any[] = [];
+
+try {
+  const mockEventsPath = path.join(__dirname, "../data/mockEvents.json");
+  if (fs.existsSync(mockEventsPath)) {
+    mockEvents = JSON.parse(fs.readFileSync(mockEventsPath, "utf8"));
+  } else {
+    console.warn(
+      "mockEvents.jsonファイルが見つかりません。空配列を使用します。"
+    );
+  }
+} catch (error) {
+  console.error("mockEvents.jsonの読み込みに失敗しました:", error);
+}
 
 // イベントをドキュメント形式に変換
 const eventDocuments = mockEvents.map((event: any) => {
@@ -52,11 +65,86 @@ const embeddings = new OpenAIEmbeddings();
 let vectorStore: MemoryVectorStore;
 
 const initVectorStore = async () => {
-  vectorStore = await MemoryVectorStore.fromDocuments(
-    eventDocuments,
-    embeddings
-  );
-  console.log("ベクトルストアが初期化されました");
+  // eventDocumentsが空の場合は、Prismaから直接イベントを取得
+  if (eventDocuments.length === 0) {
+    console.log("モックデータが空のため、Prismaからイベントを取得します");
+    try {
+      const dbEvents = await getAllEvents();
+      const docs = dbEvents.map((event) => {
+        // カテゴリとスキルを安全に取得
+        let categories = "";
+        let skills = "";
+        let speakers = "";
+        let goals = "";
+
+        try {
+          // 安全にデータを取得
+          if (event.EventCategory && Array.isArray(event.EventCategory)) {
+            categories = event.EventCategory.map((ec) => {
+              if (
+                ec &&
+                typeof ec === "object" &&
+                "Category" in ec &&
+                ec.Category &&
+                typeof ec.Category === "object" &&
+                "name" in ec.Category
+              ) {
+                return ec.Category.name;
+              }
+              return "";
+            })
+              .filter(Boolean)
+              .join(", ");
+          }
+
+          if (event.EventSkill && Array.isArray(event.EventSkill)) {
+            skills = event.EventSkill.map((skill) =>
+              skill && typeof skill === "object" && "name" in skill
+                ? skill.name
+                : ""
+            )
+              .filter(Boolean)
+              .join(", ");
+          }
+        } catch (error) {
+          console.error("イベントデータのフォーマットエラー:", error);
+        }
+
+        return new Document({
+          pageContent: `${event.title}\n${event.description || ""}`,
+          metadata: {
+            id: event.id,
+            title: event.title,
+            eventDate: event.eventDate,
+            location: event.location || "",
+            format: event.format,
+            difficulty: event.difficulty,
+            categories: categories,
+            skills: skills,
+          },
+        });
+      });
+
+      vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
+      console.log(
+        `Prismaから${docs.length}件のイベントでベクトルストアを初期化しました`
+      );
+    } catch (error) {
+      console.error("Prismaからのイベント取得に失敗しました:", error);
+      // 空のベクトルストアを作成
+      vectorStore = await MemoryVectorStore.fromDocuments([], embeddings);
+      console.warn("空のベクトルストアを初期化しました");
+    }
+  } else {
+    // モックデータがある場合は通常通り初期化
+    vectorStore = await MemoryVectorStore.fromDocuments(
+      eventDocuments,
+      embeddings
+    );
+    console.log(
+      `${eventDocuments.length}件のモックイベントでベクトルストアを初期化しました`
+    );
+  }
 };
 
 // HyDEのフォーマット用プロンプト
@@ -109,11 +197,11 @@ const eventRecommendationSchema = z.object({
 
 // ユーザー情報に基づいてイベントをランク付けするRAGチェーン
 export const rankEventsForUser = async (
-  location: string,
-  skills: string[],
-  interests: string[],
-  skillLevel: "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
-  goals: string[]
+  place: string | null,
+  stack: string[] | null,
+  tag: string[] | null,
+  level: string | null,
+  goals: string[] | null
 ) => {
   // ベクトルストアが初期化されていない場合は初期化
   if (!vectorStore) {
@@ -122,11 +210,11 @@ export const rankEventsForUser = async (
 
   // ユーザー情報
   const userInfo = {
-    location,
-    skills: skills.join(", "),
-    interests: interests.join(", "),
-    skillLevel,
-    goals: goals.join(", "),
+    location: place,
+    skills: stack || [],
+    interests: tag || [],
+    skillLevel: level,
+    goals: goals || [],
   };
 
   // HyDEチェーン: ユーザー情報からクエリを生成
@@ -153,62 +241,58 @@ export const rankEventsForUser = async (
 
       try {
         // 安全にデータを取得
-        if (event.categories && Array.isArray(event.categories)) {
-          categories = event.categories
-            .map((ec) => {
-              if (
-                ec &&
-                typeof ec === "object" &&
-                "category" in ec &&
-                ec.category &&
-                typeof ec.category === "object" &&
-                "name" in ec.category
-              ) {
-                return ec.category.name;
-              }
-              return "";
-            })
+        if (event.EventCategory && Array.isArray(event.EventCategory)) {
+          categories = event.EventCategory.map((ec) => {
+            if (
+              ec &&
+              typeof ec === "object" &&
+              "Category" in ec &&
+              ec.Category &&
+              typeof ec.Category === "object" &&
+              "name" in ec.Category
+            ) {
+              return ec.Category.name;
+            }
+            return "";
+          })
             .filter(Boolean)
             .join(", ");
         }
 
-        if (event.skills && Array.isArray(event.skills)) {
-          skills = event.skills
-            .map((skill) =>
-              skill && typeof skill === "object" && "name" in skill
-                ? skill.name
-                : ""
-            )
+        if (event.EventSkill && Array.isArray(event.EventSkill)) {
+          skills = event.EventSkill.map((skill) =>
+            skill && typeof skill === "object" && "name" in skill
+              ? skill.name
+              : ""
+          )
             .filter(Boolean)
             .join(", ");
         }
 
-        if (event.speakers && Array.isArray(event.speakers)) {
-          speakers = event.speakers
-            .map((es) => {
-              if (
-                es &&
-                typeof es === "object" &&
-                "speaker" in es &&
-                es.speaker &&
-                typeof es.speaker === "object" &&
-                "name" in es.speaker
-              ) {
-                return es.speaker.name;
-              }
-              return "";
-            })
+        if (event.EventSpeaker && Array.isArray(event.EventSpeaker)) {
+          speakers = event.EventSpeaker.map((es) => {
+            if (
+              es &&
+              typeof es === "object" &&
+              "Speaker" in es &&
+              es.Speaker &&
+              typeof es.Speaker === "object" &&
+              "name" in es.Speaker
+            ) {
+              return es.Speaker.name;
+            }
+            return "";
+          })
             .filter(Boolean)
             .join(", ");
         }
 
-        if (event.goals && Array.isArray(event.goals)) {
-          goals = event.goals
-            .map((goal) =>
-              goal && typeof goal === "object" && "goalType" in goal
-                ? goal.goalType
-                : ""
-            )
+        if (event.EventGoal && Array.isArray(event.EventGoal)) {
+          goals = event.EventGoal.map((goal) =>
+            goal && typeof goal === "object" && "goalType" in goal
+              ? goal.goalType
+              : ""
+          )
             .filter(Boolean)
             .join(", ");
         }

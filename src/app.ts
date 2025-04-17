@@ -5,7 +5,10 @@ import speakerRoutes from "./routes/speakerRoutes";
 import eventRoutes from "./routes/eventRoutes";
 import authRoutes from "./routes/authRoutes";
 import lineRoutes from "./routes/lineRoutes";
+import categoryRoutes from "./routes/categoryRoutes";
+import bookmarkRoutes from "./routes/bookmarkRoutes";
 import { errorHandler } from "./middleware/errorHandler";
+import { PrismaClient } from "@prisma/client";
 
 dotenv.config({
   path: process.env.NODE_ENV === "production" ? ".env" : ".env.local",
@@ -13,6 +16,7 @@ dotenv.config({
 
 const app = express();
 const port = process.env.PORT || 3001;
+const prisma = new PrismaClient();
 
 // CORS設定を強化
 const allowedOrigins = [
@@ -50,11 +54,32 @@ app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
+// Database health check endpoint
+app.get("/health/db", async (req, res) => {
+  try {
+    // データベースに接続を試みる
+    await prisma.$queryRaw`SELECT 1`;
+    res.status(200).json({
+      status: "ok",
+      database: "connected",
+    });
+  } catch (error: unknown) {
+    console.error("Database connection error:", error);
+    res.status(500).json({
+      status: "error",
+      database: "disconnected",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
 // Routes
 app.use("/api/speakers", speakerRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/line", lineRoutes);
+app.use("/api/categories", categoryRoutes);
+app.use("/api/bookmarks", bookmarkRoutes);
 
 // Error handling
 app.use(errorHandler);
