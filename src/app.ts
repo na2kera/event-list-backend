@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import speakerRoutes from "./routes/speakerRoutes";
 import eventRoutes from "./routes/eventRoutes";
 import authRoutes from "./routes/authRoutes";
-import ragRoutes from "./routes/ragRoutes";
+import lineRoutes from "./routes/lineRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 
 dotenv.config({
@@ -54,7 +54,7 @@ app.get("/health", (req, res) => {
 app.use("/api/speakers", speakerRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/rag", ragRoutes);
+app.use("/api/line", lineRoutes);
 
 // Error handling
 app.use(errorHandler);
