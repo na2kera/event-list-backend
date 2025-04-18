@@ -86,6 +86,7 @@ export const getEventById: RequestHandler = async (req, res, next) => {
             category: true,
           },
         },
+        goals: true,
       },
     });
 
