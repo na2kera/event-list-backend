@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import speakerRoutes from "./routes/speakerRoutes";
 import eventRoutes from "./routes/eventRoutes";
 import authRoutes from "./routes/authRoutes";
+import userRoutes from "./routes/userRoutes";
 import lineRoutes from "./routes/lineRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
 import bookmarkRoutes from "./routes/bookmarkRoutes";
@@ -74,12 +75,13 @@ app.get("/health/db", async (req, res) => {
 });
 
 // Routes
-app.use("/api/speakers", speakerRoutes);
-app.use("/api/events", eventRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/line", lineRoutes);
+app.use("/api/speakers", speakerRoutes);
+app.use("/api/events", eventRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/bookmarks", bookmarkRoutes);
+app.use("/api/users", userRoutes);
 
 // Error handling
 app.use(errorHandler);
