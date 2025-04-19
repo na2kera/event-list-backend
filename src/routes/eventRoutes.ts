@@ -4,6 +4,7 @@ import {
   getEventById,
   createEvent,
   searchEvents,
+  recommendEvents,
   updateEvent,
 } from "../controllers/eventController";
 
@@ -13,6 +14,7 @@ router.get("/", getEvents);
 router.get("/search", searchEvents);
 router.get("/:id", getEventById);
 router.post("/", createEvent);
+router.post("/recommend-batch", recommendEvents);
 router.put("/:id", updateEvent);
 
 export default router;

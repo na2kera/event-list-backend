@@ -4,12 +4,15 @@ import dotenv from "dotenv";
 import speakerRoutes from "./routes/speakerRoutes";
 import eventRoutes from "./routes/eventRoutes";
 import authRoutes from "./routes/authRoutes";
+import lineRoutes from "./routes/lineRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
 import bookmarkRoutes from "./routes/bookmarkRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 import { PrismaClient } from "@prisma/client";
 
-dotenv.config();
+dotenv.config({
+  path: process.env.NODE_ENV === "production" ? ".env" : ".env.local",
+});
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -74,6 +77,7 @@ app.get("/health/db", async (req, res) => {
 app.use("/api/speakers", speakerRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/line", lineRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/bookmarks", bookmarkRoutes);
 

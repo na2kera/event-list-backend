@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { RequestHandler } from "express";
 import prisma from "../config/prisma";
 import { Prisma } from "@prisma/client";
+import { recommendEventsForUser } from "../services/recommendEventsService";
 
 export const getEvents: RequestHandler = async (
   req: Request,
@@ -33,16 +34,16 @@ export const getEvents: RequestHandler = async (
     const events = await prisma.event.findMany({
       where,
       include: {
-        organization: true,
-        skills: true,
-        speakers: {
+        Organization: true,
+        EventSkill: true,
+        EventSpeaker: {
           include: {
-            speaker: true,
+            Speaker: true,
           },
         },
-        categories: {
+        EventCategory: {
           include: {
-            category: true,
+            Category: true,
           },
         },
       },
@@ -74,19 +75,18 @@ export const getEventById: RequestHandler = async (req, res, next) => {
     const event = await prisma.event.findUnique({
       where: { id },
       include: {
-        organization: true,
-        skills: true,
-        speakers: {
+        Organization: true,
+        EventSkill: true,
+        EventSpeaker: {
           include: {
-            speaker: true,
+            Speaker: true,
           },
         },
-        categories: {
+        EventCategory: {
           include: {
-            category: true,
+            Category: true,
           },
         },
-        goals: true,
       },
     });
 
@@ -118,6 +118,7 @@ export const createEvent: RequestHandler = async (req, res, next) => {
   try {
     const event = await prisma.event.create({
       data: {
+        id: crypto.randomUUID(), // UUIDを生成
         title: req.body.title,
         description: req.body.description,
         eventDate: new Date(req.body.eventDate),
@@ -129,35 +130,42 @@ export const createEvent: RequestHandler = async (req, res, next) => {
         detailUrl: req.body.detailUrl,
         image: req.body.image,
         organizationId: req.body.organizationId,
-        skills: {
+        updatedAt: new Date(), // 現在の日時を設定
+        EventSkill: {
           create: req.body.skills?.map((skill: { name: string }) => ({
+            id: crypto.randomUUID(), // スキルIDを生成
             name: skill.name,
+            updatedAt: new Date(), // 更新日時を設定
           })),
         },
-        speakers: {
+        EventSpeaker: {
           create: req.body.speakers?.map((speaker: { speakerId: string }) => ({
+            id: crypto.randomUUID(), // スピーカー関連IDを生成
             speakerId: speaker.speakerId,
+            updatedAt: new Date(), // 更新日時を設定
           })),
         },
-        categories: {
+        EventCategory: {
           create: req.body.categories?.map(
             (category: { categoryId: string }) => ({
+              id: crypto.randomUUID(), // カテゴリ関連IDを生成
               categoryId: category.categoryId,
+              updatedAt: new Date(), // 更新日時を設定
             })
           ),
         },
       },
       include: {
-        organization: true,
-        skills: true,
-        speakers: {
+        Organization: true,
+        EventSkill: true,
+        EventSpeaker: {
           include: {
-            speaker: true,
+            Speaker: true,
           },
         },
-        categories: {
+        EventCategory: {
           include: {
-            category: true,
+            Category: true,
           },
         },
       },
@@ -228,7 +236,7 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
       const categoryIds = Array.isArray(categories) ? categories : [categories];
 
       if (categoryIds.length > 0) {
-        where.categories = {
+        where.EventCategory = {
           some: {
             categoryId: { in: categoryIds as string[] },
           },
@@ -241,7 +249,7 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
       const skillNames = Array.isArray(skills) ? skills : [skills];
 
       if (skillNames.length > 0) {
-        where.skills = {
+        where.EventSkill = {
           some: {
             name: { in: skillNames as string[] },
           },
@@ -253,16 +261,16 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
     const events = await prisma.event.findMany({
       where,
       include: {
-        organization: true,
-        skills: true,
-        speakers: {
+        Organization: true,
+        EventSkill: true,
+        EventSpeaker: {
           include: {
-            speaker: true,
+            Speaker: true,
           },
         },
-        categories: {
+        EventCategory: {
           include: {
-            category: true,
+            Category: true,
           },
         },
       },
@@ -287,11 +295,34 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
   }
 };
 
-/**
- * イベント更新API
- * 指定されたIDのイベントを更新する
- * 関連するスキル、カテゴリ、スピーカーなども更新可能
- */
+export const recommendEvents: RequestHandler = async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+    if (typeof userId !== "string") {
+      res.status(400).json({ error: "Invalid parameters" });
+      return;
+    }
+    try {
+      await recommendEventsForUser(userId);
+
+      // 取得した活動データをそのままJSON形式で返す
+      res
+        .status(200)
+        .json({ success: true, message: "イベント推薦の処理が完了しました" });
+    } catch (error) {
+      console.error("Error in recommendEvents:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  } catch (error) {
+    console.error("Error in recommendEvents:", error);
+    res.status(500).json({ error: "Internal server error" });
+    /**
+     * イベント更新API
+     * 指定されたIDのイベントを更新する
+     * 関連するスキル、カテゴリ、スピーカーなども更新可能
+     */
+  }
+};
 export const updateEvent: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -300,10 +331,9 @@ export const updateEvent: RequestHandler = async (req, res, next) => {
     const existingEvent = await prisma.event.findUnique({
       where: { id },
       include: {
-        skills: true,
-        categories: true,
-        speakers: true,
-        goals: true,
+        EventSkill: true,
+        EventCategory: true,
+        EventSpeaker: true,
       },
     });
 
@@ -318,7 +348,7 @@ export const updateEvent: RequestHandler = async (req, res, next) => {
 
     // トランザクション内で関連データも含めて更新
     const updatedEvent = await prisma.$transaction(async (prismaClient) => {
-      // 1. 既存の関連データを削除（スキル、カテゴリ、スピーカー、ゴール）
+      // 1. 既存の関連データを削除（スキル、カテゴリ、スピーカー）
       if (req.body.skills !== undefined) {
         await prismaClient.eventSkill.deleteMany({
           where: { eventId: id },
@@ -333,12 +363,6 @@ export const updateEvent: RequestHandler = async (req, res, next) => {
 
       if (req.body.speakers !== undefined) {
         await prismaClient.eventSpeaker.deleteMany({
-          where: { eventId: id },
-        });
-      }
-
-      if (req.body.goals !== undefined) {
-        await prismaClient.eventGoal.deleteMany({
           where: { eventId: id },
         });
       }
@@ -408,15 +432,6 @@ export const updateEvent: RequestHandler = async (req, res, next) => {
         };
       }
 
-      // ゴールの更新
-      if (req.body.goals && Array.isArray(req.body.goals)) {
-        createData.goals = {
-          create: req.body.goals.map((goal: { goalType: string }) => ({
-            goalType: goal.goalType,
-          })),
-        };
-      }
-
       // 4. イベントとその関連データを更新
       return prismaClient.event.update({
         where: { id },
@@ -425,19 +440,18 @@ export const updateEvent: RequestHandler = async (req, res, next) => {
           ...createData,
         },
         include: {
-          organization: true,
-          skills: true,
-          speakers: {
+          Organization: true,
+          EventSkill: true,
+          EventSpeaker: {
             include: {
-              speaker: true,
+              Speaker: true,
             },
           },
-          categories: {
+          EventCategory: {
             include: {
-              category: true,
+              Category: true,
             },
           },
-          goals: true,
         },
       });
     });

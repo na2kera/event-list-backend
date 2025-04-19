@@ -8,102 +8,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model Organization {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  website     String?
-  email       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  events      Event[]
-}
-
-model Event {
-  id             String          @id @default(cuid())
-  title          String
-  description    String?
-  eventDate      DateTime
-  startTime      String
-  endTime        String?
-  venue          String
-  address        String?
-  location       String?
-  detailUrl      String?
-  organizationId String
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  image          String?
-  format         EventFormat     @default(OFFLINE)
-  difficulty     DifficultyLevel @default(FOR_EVERYONE)
-  price          Int             @default(0)
-  eventType      EventType       @default(WORKSHOP)
-  organization   Organization    @relation(fields: [organizationId], references: [id])
-  categories     EventCategory[]
-  skills         EventSkill[]
-  speakers       EventSpeaker[]
-  goals          EventGoal[]
-  bookmarks      Bookmark[]
-
-  @@index([organizationId])
-}
-
-model EventSkill {
-  id        String   @id @default(cuid())
-  name      String
-  eventId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@index([eventId])
-}
-
-model Speaker {
-  id          String         @id @default(cuid())
-  name        String
-  occupation  String
-  affiliation String
-  bio         String
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  events      EventSpeaker[]
-}
-
-model EventSpeaker {
-  id        String   @id @default(cuid())
-  eventId   String
-  speakerId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  speaker   Speaker  @relation(fields: [speakerId], references: [id], onDelete: Cascade)
-
-  @@index([eventId])
-  @@index([speakerId])
-}
-
-model Category {
-  id        String          @id @default(cuid())
-  name      String          @unique
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  events    EventCategory[]
-}
-
-model EventCategory {
-  id         String   @id @default(cuid())
-  eventId    String
-  categoryId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@index([eventId])
-  @@index([categoryId])
-}
-
 model Account {
   id                String  @id
   userId            String
@@ -117,9 +21,119 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+}
+
+model Bookmark {
+  id        String   @id
+  userId    String
+  eventId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([eventId])
+  @@index([userId])
+}
+
+model Category {
+  id            String          @id
+  name          String          @unique
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  EventCategory EventCategory[]
+}
+
+model Event {
+  id             String          @id
+  title          String
+  description    String?
+  eventDate      DateTime
+  startTime      String
+  endTime        String?
+  venue          String
+  address        String?
+  location       String?
+  detailUrl      String?
+  organizationId String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime
+  image          String?
+  format         EventFormat     @default(OFFLINE)
+  difficulty     DifficultyLevel @default(FOR_EVERYONE)
+  price          Int             @default(0)
+  eventType      EventType       @default(WORKSHOP)
+  Bookmark       Bookmark[]
+  Organization   Organization    @relation(fields: [organizationId], references: [id])
+  EventCategory  EventCategory[]
+  EventGoal      EventGoal[]
+  EventSkill     EventSkill[]
+  EventSpeaker   EventSpeaker[]
+
+  @@index([organizationId])
+}
+
+model EventCategory {
+  id         String   @id
+  eventId    String
+  categoryId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+  Category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  Event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@index([eventId])
+}
+
+model EventGoal {
+  id        String   @id
+  goalType  GoalType
+  eventId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+model EventSkill {
+  id        String   @id
+  name      String
+  eventId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+}
+
+model EventSpeaker {
+  id        String   @id
+  eventId   String
+  speakerId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  Event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  Speaker   Speaker  @relation(fields: [speakerId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([speakerId])
+}
+
+model Organization {
+  id          String   @id
+  name        String
+  description String?
+  website     String?
+  email       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  Event       Event[]
 }
 
 model Session {
@@ -127,38 +141,36 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Speaker {
+  id           String         @id
+  name         String
+  occupation   String
+  affiliation  String
+  bio          String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime
+  EventSpeaker EventSpeaker[]
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String     @id
   name          String?
-  email         String?   @unique
+  email         String?    @unique
   emailVerified DateTime?
   image         String?
-  accounts      Account[]
-  sessions      Session[]
-  bookmarks     Bookmark[]
-}
-
-model Bookmark {
-  id        String   @id @default(cuid())
-  userId    String
-  eventId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, eventId])
-  @@index([userId])
-  @@index([eventId])
-}
-
-enum EventFormat {
-  ONLINE
-  OFFLINE
-  HYBRID
+  lineId        String?
+  stack         String[]
+  level         String?
+  place         String?
+  tag           String[]
+  goal          String[]
+  affiliation   String?
+  Account       Account[]
+  Bookmark      Bookmark[]
+  Session       Session[]
 }
 
 enum DifficultyLevel {
@@ -166,6 +178,12 @@ enum DifficultyLevel {
   INTERMEDIATE
   ADVANCED
   FOR_EVERYONE
+}
+
+enum EventFormat {
+  ONLINE
+  OFFLINE
+  HYBRID
 }
 
 enum EventType {
@@ -179,15 +197,4 @@ enum GoalType {
   IMPROVE_SKILLS
   EXPERIENCE_TEAM_DEV
   CREATE_PORTFOLIO
-}
-
-model EventGoal {
-  id        String    @id @default(cuid())
-  goalType  GoalType
-  eventId   String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
-
-  @@index([eventId])
 }

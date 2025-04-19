@@ -1,0 +1,112 @@
+[
+  {
+    "id": "1",
+    "title": "React勉強会 - Hooksの基礎から応用まで",
+    "description": "Reactの最新機能であるHooksについて学びます。useState、useEffect、useContextなどの基本的なHooksから、カスタムHooksの作成方法まで解説します。実際にコードを書きながら学べるハンズオン形式です。Reactの基本的な知識がある方向けの中級者向け勉強会です。",
+    "eventDate": "2025-05-15T18:00:00Z",
+    "location": "東京都渋谷区",
+    "format": "OFFLINE",
+    "difficulty": "INTERMEDIATE",
+    "categories": ["フロントエンド", "React", "JavaScript"],
+    "skills": ["React", "JavaScript", "TypeScript", "Hooks"]
+  },
+  {
+    "id": "2",
+    "title": "Python入門ワークショップ",
+    "description": "プログラミング初心者向けのPython入門ワークショップです。基本的な文法からデータ分析の基礎まで、実践的なコーディングを通して学びます。PCを持参いただければ、環境構築からサポートします。",
+    "eventDate": "2025-05-20T13:00:00Z",
+    "location": "大阪府大阪市",
+    "format": "HYBRID",
+    "difficulty": "BEGINNER",
+    "categories": ["バックエンド", "Python", "初心者向け"],
+    "skills": ["Python", "データ分析"]
+  },
+  {
+    "id": "3",
+    "title": "AWS認定ソリューションアーキテクト試験対策セミナー",
+    "description": "AWS認定ソリューションアーキテクト - アソシエイト試験の対策セミナーです。主要なAWSサービスの解説と、試験によく出る内容を中心に解説します。クラウドの基本知識がある方を対象としています。",
+    "eventDate": "2025-06-05T10:00:00Z",
+    "location": "オンライン",
+    "format": "ONLINE",
+    "difficulty": "INTERMEDIATE",
+    "categories": ["クラウド", "AWS", "資格"],
+    "skills": ["AWS", "クラウドアーキテクチャ"]
+  },
+  {
+    "id": "4",
+    "title": "モバイルアプリ開発ハッカソン",
+    "description": "48時間でモバイルアプリを開発するハッカソンイベントです。Flutter、React Native、Swiftなどのモバイルアプリフレームワークでのアプリ開発に挑戦します。チームでの参加も個人での参加も歓迎です。優秀作品には賞品があります。",
+    "eventDate": "2025-06-15T09:00:00Z",
+    "location": "福岡県福岡市",
+    "format": "OFFLINE",
+    "difficulty": "ADVANCED",
+    "categories": ["モバイル", "ハッカソン", "アプリ開発"],
+    "skills": ["Flutter", "React Native", "Swift", "Kotlin"]
+  },
+  {
+    "id": "5",
+    "title": "Dockerコンテナ実践入門",
+    "description": "Dockerの基本から実践的な使い方まで学べるワークショップです。コンテナ化の概念、Dockerfileの書き方、Docker Composeを使った複数コンテナの管理など、実際に手を動かしながら学びます。",
+    "eventDate": "2025-05-25T14:00:00Z",
+    "location": "名古屋市中区",
+    "format": "OFFLINE",
+    "difficulty": "INTERMEDIATE",
+    "categories": ["インフラ", "Docker", "コンテナ"],
+    "skills": ["Docker", "Linux", "コンテナ技術"]
+  },
+  {
+    "id": "6",
+    "title": "機械学習モデルのデプロイメント実践",
+    "description": "機械学習モデルを本番環境にデプロイする方法を学ぶワークショップです。MLOpsの基本概念から、モデルのバージョン管理、モニタリング、スケーリングまで解説します。TensorFlow ServingやKubernetesを使ったデプロイメントを実践します。",
+    "eventDate": "2025-07-10T15:00:00Z",
+    "location": "オンライン",
+    "format": "ONLINE",
+    "difficulty": "ADVANCED",
+    "categories": ["機械学習", "MLOps", "デプロイメント"],
+    "skills": ["Python", "TensorFlow", "Kubernetes", "Docker"]
+  },
+  {
+    "id": "7",
+    "title": "Web3開発入門 - ブロックチェーンとスマートコントラクト",
+    "description": "ブロックチェーン技術とスマートコントラクトの基礎を学ぶワークショップです。Ethereumを使ったDApp開発の基本を解説し、実際にスマートコントラクトを作成・デプロイします。Web開発の経験があると理解しやすいです。",
+    "eventDate": "2025-06-20T18:30:00Z",
+    "location": "東京都渋谷区",
+    "format": "HYBRID",
+    "difficulty": "INTERMEDIATE",
+    "categories": ["ブロックチェーン", "Web3", "Ethereum"],
+    "skills": ["Solidity", "JavaScript", "Web3.js", "MetaMask"]
+  },
+  {
+    "id": "8",
+    "title": "UIデザイン基礎講座",
+    "description": "UIデザインの基本原則から実践的なテクニックまで学べる講座です。Figmaを使ったデザインの作成方法、ユーザビリティの考え方、デザインシステムの構築方法などを解説します。デザイン初心者からエンジニアまで幅広く参加できます。",
+    "eventDate": "2025-05-30T13:00:00Z",
+    "location": "京都府京都市",
+    "format": "OFFLINE",
+    "difficulty": "BEGINNER",
+    "categories": ["デザイン", "UI/UX", "Figma"],
+    "skills": ["Figma", "UIデザイン", "UXデザイン"]
+  },
+  {
+    "id": "9",
+    "title": "GraphQLとApollo Serverハンズオン",
+    "description": "GraphQLの基本概念とApollo Serverを使ったAPI開発を学ぶハンズオンワークショップです。RESTからGraphQLへの移行方法、スキーマ設計、リゾルバの実装などを実践的に学びます。Node.jsの基本知識があると理解しやすいです。",
+    "eventDate": "2025-07-05T14:00:00Z",
+    "location": "オンライン",
+    "format": "ONLINE",
+    "difficulty": "INTERMEDIATE",
+    "categories": ["バックエンド", "API", "GraphQL"],
+    "skills": ["GraphQL", "Node.js", "Apollo", "JavaScript"]
+  },
+  {
+    "id": "10",
+    "title": "サイバーセキュリティ基礎講座",
+    "description": "Webアプリケーションのセキュリティ対策について学ぶ講座です。一般的な脆弱性とその対策、セキュアコーディングの基本、脆弱性診断の方法などを解説します。実際の脆弱性を安全な環境で体験できるハンズオンも含みます。",
+    "eventDate": "2025-06-25T10:00:00Z",
+    "location": "札幌市中央区",
+    "format": "OFFLINE",
+    "difficulty": "INTERMEDIATE",
+    "categories": ["セキュリティ", "Webセキュリティ"],
+    "skills": ["セキュリティ", "脆弱性診断", "セキュアコーディング"]
+  }
+]

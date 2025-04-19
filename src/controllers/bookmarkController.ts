@@ -1,5 +1,6 @@
 import { Request, Response, RequestHandler } from "express";
 import prisma from "../config/prisma";
+import crypto from "crypto";
 
 // ブックマークの追加
 export const addBookmark: RequestHandler = async (req, res) => {
@@ -17,7 +18,7 @@ export const addBookmark: RequestHandler = async (req, res) => {
         },
       },
       include: {
-        event: true,
+        Event: true,
       },
     });
 
@@ -32,11 +33,13 @@ export const addBookmark: RequestHandler = async (req, res) => {
     // 新規作成
     const bookmark = await prisma.bookmark.create({
       data: {
+        id: crypto.randomUUID(), // UUIDを生成
         userId,
         eventId,
+        updatedAt: new Date(), // 現在の日時
       },
       include: {
-        event: true,
+        Event: true,
       },
     });
 
@@ -91,18 +94,18 @@ export const getUserBookmarks: RequestHandler = async (req, res) => {
         userId,
       },
       include: {
-        event: {
+        Event: {
           include: {
-            organization: true,
-            categories: {
+            Organization: true,
+            EventCategory: {
               include: {
-                category: true,
+                Category: true,
               },
             },
-            skills: true,
-            speakers: {
+            EventSkill: true,
+            EventSpeaker: {
               include: {
-                speaker: true,
+                Speaker: true,
               },
             },
           },
