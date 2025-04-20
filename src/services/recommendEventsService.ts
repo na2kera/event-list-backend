@@ -36,7 +36,6 @@ export const recommendEventsForUser = async (userId: string) => {
 
     console.log(`フィルタリング後のイベント数: ${filteredEvents.length}`);
 
-    // フィルタリングされたイベントが少ない場合は、RAGを使用して推奨
     const recommendedEventIds = await rankEventsForUser(
       user.place,
       user.stack,

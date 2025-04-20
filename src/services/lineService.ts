@@ -1,6 +1,10 @@
 import axios from "axios";
 import prisma from "../config/prisma";
 import crypto from "crypto";
+import {
+  createEventRecommendlMessage,
+  createEventReminderMessage,
+} from "../utils/lineMessageTemplates";
 
 // LINE Messaging APIのエンドポイント
 const LINE_MESSAGING_API = "https://api.line.me/v2/bot/message/push";
@@ -94,10 +98,10 @@ export const sendEventCarouselToUser = async (
     });
 
     if (!user || !user.lineId) {
-      throw new Error("ユーザーが見つからないか、LINE連携が行われていません");
+      throw new Error(`ユーザー(${userId})のLINE IDが見つかりません`);
     }
 
-    // イベントIDリストからイベント情報を取得
+    // イベント情報を取得
     const events = await prisma.event.findMany({
       where: {
         id: {
@@ -118,151 +122,8 @@ export const sendEventCarouselToUser = async (
       throw new Error("指定されたイベントが見つかりません");
     }
 
-    // カルーセルテンプレート用のバブルを作成（最大10件）
-    const bubbles = events.slice(0, 10).map((event) => {
-      // イベントの日付をフォーマット
-      const eventDate = new Date(event.eventDate);
-      const formattedDate = `${eventDate.getFullYear()}年${eventDate.getMonth() + 1}月${eventDate.getDate()}日`;
-      
-      // カテゴリ名を取得
-      const categories = event.EventCategory.map(ec => ec.Category.name).join(', ');
-      
-      return {
-        type: "bubble",
-        hero: {
-          type: "image",
-          url: event.image || "https://via.placeholder.com/1024x400?text=No+Image",
-          size: "full",
-          aspectRatio: "20:13",
-          aspectMode: "cover",
-        },
-        body: {
-          type: "box",
-          layout: "vertical",
-          contents: [
-            {
-              type: "text",
-              text: event.title,
-              weight: "bold",
-              size: "xl",
-              wrap: true,
-            },
-            {
-              type: "box",
-              layout: "vertical",
-              margin: "lg",
-              spacing: "sm",
-              contents: [
-                {
-                  type: "box",
-                  layout: "baseline",
-                  spacing: "sm",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "日時",
-                      color: "#aaaaaa",
-                      size: "sm",
-                      flex: 1,
-                    },
-                    {
-                      type: "text",
-                      text: `${formattedDate} ${event.startTime || ""}`,
-                      wrap: true,
-                      color: "#666666",
-                      size: "sm",
-                      flex: 5,
-                    },
-                  ],
-                },
-                {
-                  type: "box",
-                  layout: "baseline",
-                  spacing: "sm",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "場所",
-                      color: "#aaaaaa",
-                      size: "sm",
-                      flex: 1,
-                    },
-                    {
-                      type: "text",
-                      text: event.venue || "オンライン",
-                      wrap: true,
-                      color: "#666666",
-                      size: "sm",
-                      flex: 5,
-                    },
-                  ],
-                },
-                {
-                  type: "box",
-                  layout: "baseline",
-                  spacing: "sm",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "カテゴリ",
-                      color: "#aaaaaa",
-                      size: "sm",
-                      flex: 1,
-                    },
-                    {
-                      type: "text",
-                      text: categories || "なし",
-                      wrap: true,
-                      color: "#666666",
-                      size: "sm",
-                      flex: 5,
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        footer: {
-          type: "box",
-          layout: "vertical",
-          spacing: "sm",
-          contents: [
-            {
-              type: "button",
-              style: "primary",
-              height: "sm",
-              action: {
-                type: "uri",
-                label: "詳細を見る",
-                uri: event.detailUrl || `https://event-list-frontend.vercel.app/events/${event.id}`,
-              },
-            },
-            {
-              type: "button",
-              style: "secondary",
-              height: "sm",
-              action: {
-                type: "postback",
-                label: "ブックマークに追加",
-                data: `action=bookmark&eventId=${event.id}&userId=${userId}`,
-              },
-            },
-          ],
-          flex: 0,
-        },
-      };
-    });
-
-    // カルーセルテンプレートを作成
-    const carouselMessage = {
-      type: "flex",
-      altText: "おすすめイベント情報",
-      contents: {
-        type: "carousel",
-        contents: bubbles,
-      },
-    };
+    // カルーセルメッセージを作成
+    const carouselMessage = createEventRecommendlMessage(events, userId);
 
     // LINE Messaging APIを使用してカルーセルを送信
     const response = await axios.post(
@@ -302,10 +163,7 @@ export const sendEventCarouselToUser = async (
  * @param eventId イベントID
  * @returns 処理結果
  */
-export const addBookmarkFromLine = async (
-  userId: string,
-  eventId: string
-) => {
+export const addBookmarkFromLine = async (userId: string, eventId: string) => {
   try {
     // すでにブックマークが存在するか確認
     const existingBookmark = await prisma.bookmark.findFirst({
@@ -342,5 +200,308 @@ export const addBookmarkFromLine = async (
   } catch (error) {
     console.error("ブックマーク追加エラー:", error);
     throw error;
+  }
+};
+
+/**
+ * LINE認証コードからアクセストークンを取得する
+ * @param code LINE認証コード
+ * @returns アクセストークン情報
+ */
+export const getLineTokenFromCode = async (code: string) => {
+  try {
+    // LINE Developersコンソールで設定した情報
+    const clientId = process.env.LINE_AUTH_CLIENT_ID;
+    const clientSecret = process.env.LINE_AUTH_CLIENT_SECRET;
+    const redirectUri =
+      process.env.LINE_AUTH_REDIRECT_URI ||
+      "http://localhost:3000/line-callback";
+
+    if (!clientId || !clientSecret) {
+      throw new Error("LINE認証情報が設定されていません");
+    }
+
+    console.log("client id:", clientId);
+    console.log("client secret:", clientSecret);
+    console.log("redirect uri:", redirectUri);
+
+    // LINE Token APIを呼び出し
+    const tokenResponse = await axios.post(
+      "https://api.line.me/oauth2/v2.1/token",
+      new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: clientSecret,
+      }).toString(),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
+
+    return tokenResponse.data;
+  } catch (error) {
+    console.error("LINEトークン取得エラー:", error);
+
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(
+        `LINEトークン取得エラー: ${
+          error.response.data.error_description ||
+          error.response.data.error ||
+          error.message
+        }`
+      );
+    }
+
+    throw error;
+  }
+};
+
+/**
+ * LINEアクセストークンからプロフィール情報を取得する
+ * @param accessToken LINEアクセストークン
+ * @returns プロフィール情報
+ */
+export const getLineProfileFromToken = async (accessToken: string) => {
+  try {
+    // LINE Profile APIを呼び出し
+    const profileResponse = await axios.get("https://api.line.me/v2/profile", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const { userId, displayName, pictureUrl } = profileResponse.data;
+
+    return {
+      userId,
+      displayName,
+      pictureUrl,
+    };
+  } catch (error) {
+    console.error("LINEプロフィール取得エラー:", error);
+
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(
+        `LINEプロフィール取得エラー: ${
+          error.response.data.error_description ||
+          error.response.data.error ||
+          error.message
+        }`
+      );
+    }
+
+    throw error;
+  }
+};
+
+/**
+ * LINE認証コードからトークンとプロフィール情報を取得し、ユーザー情報を保存する
+ * @param code LINE認証コード
+ * @returns 処理結果とユーザー情報
+ */
+export const processLineAuthentication = async (code: string) => {
+  try {
+    // 1. LINEトークンを取得
+    const tokenData = await getLineTokenFromCode(code);
+    const { access_token } = tokenData;
+
+    if (!access_token) {
+      throw new Error("LINEアクセストークンの取得に失敗しました");
+    }
+
+    // 2. LINEプロフィール情報を取得
+    const profileData = await getLineProfileFromToken(access_token);
+    const { userId: lineId, displayName, pictureUrl } = profileData;
+
+    if (!lineId) {
+      throw new Error("LINEユーザーIDの取得に失敗しました");
+    }
+
+    // 3. ユーザー情報をデータベースに保存または更新
+    // 既存のユーザーをチェック
+    let user = await prisma.user.findFirst({
+      where: { lineId },
+    });
+
+    if (user) {
+      // 既存ユーザーのLINE情報を更新
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          lineId,
+        },
+      });
+    } else {
+      // 新規ユーザーを作成
+      user = await prisma.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          lineId,
+          name: displayName || "LINEユーザー",
+          image: pictureUrl,
+          email: null,
+          stack: [],
+          level: "BEGINNER",
+          place: null,
+          tag: [],
+          goal: [],
+          affiliation: null,
+        },
+      });
+    }
+
+    // 4. レスポンスを返す
+    return {
+      success: true,
+      message: "LINE連携が完了しました",
+      user: {
+        id: user.id,
+        lineId: user.lineId,
+        name: user.name,
+        image: user.image,
+      },
+      token: {
+        access_token,
+        ...tokenData,
+      },
+      profile: profileData,
+    };
+  } catch (error) {
+    console.error("LINE認証処理エラー:", error);
+    throw error;
+  }
+};
+
+/**
+ * 1週間後に開催されるイベントをブックマークしているユーザーにリマインドメッセージを送信する
+ * @returns 処理結果
+ */
+export const sendEventReminders = async () => {
+  try {
+    // 現在の日付を取得
+    const now = new Date();
+
+    // 1週間後の日付を計算（時刻部分をリセット）
+    const oneWeekLater = new Date(now);
+    oneWeekLater.setDate(now.getDate() + 7);
+    oneWeekLater.setHours(0, 0, 0, 0);
+
+    // 翌日の日付を計算（時刻部分をリセット）
+    const nextDay = new Date(oneWeekLater);
+    nextDay.setDate(oneWeekLater.getDate() + 1);
+
+    // 1週間後に開催されるイベントを検索
+    const upcomingEvents = await prisma.event.findMany({
+      where: {
+        eventDate: {
+          gte: oneWeekLater,
+          lt: nextDay,
+        },
+      },
+      include: {
+        Bookmark: {
+          include: {
+            User: true,
+          },
+        },
+      },
+    });
+
+    console.log(
+      `1週間後（${
+        oneWeekLater.toISOString().split("T")[0]
+      }）に開催されるイベント数: ${upcomingEvents.length}`
+    );
+
+    // 送信結果を格納する配列
+    interface ReminderResult {
+      userId: string;
+      lineId: string;
+      eventId: string;
+      eventTitle: string;
+      success: boolean;
+      error?: string;
+    }
+
+    const results: ReminderResult[] = [];
+
+    // 各イベントについて処理
+    for (const event of upcomingEvents) {
+      // イベントをブックマークしているユーザーを取得
+      const bookmarks = event.Bookmark;
+
+      console.log(
+        `イベント「${event.title}」のブックマーク数: ${bookmarks.length}`
+      );
+
+      // 各ブックマークについて処理
+      for (const bookmark of bookmarks) {
+        const user = bookmark.User;
+
+        // ユーザーのLINE IDが存在する場合のみ通知を送信
+        if (user && user.lineId) {
+          try {
+            // リマインドメッセージを作成
+            const reminderMessage = createEventReminderMessage(
+              event,
+              oneWeekLater
+            );
+
+            // LINE通知を送信（カールセルメッセージ）
+            const client = axios.create({
+              baseURL: "https://api.line.me/v2/bot",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
+              },
+            });
+
+            await client.post("/message/push", {
+              to: user.lineId,
+              messages: [reminderMessage],
+            });
+
+            results.push({
+              userId: user.id,
+              lineId: user.lineId,
+              eventId: event.id,
+              eventTitle: event.title,
+              success: true,
+            });
+          } catch (error) {
+            console.error(
+              `ユーザー(${user.id})へのリマインド送信エラー:`,
+              error
+            );
+
+            results.push({
+              userId: user.id,
+              lineId: user.lineId,
+              eventId: event.id,
+              eventTitle: event.title,
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      success: true,
+      message: `${results.length}件のリマインド通知を処理しました`,
+      results,
+    };
+  } catch (error) {
+    console.error("イベントリマインド送信エラー:", error);
+    throw new Error(
+      `イベントリマインドの送信に失敗しました: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 };
