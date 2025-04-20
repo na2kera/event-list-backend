@@ -316,13 +316,14 @@ export const recommendEvents: RequestHandler = async (req, res, next) => {
   } catch (error) {
     console.error("Error in recommendEvents:", error);
     res.status(500).json({ error: "Internal server error" });
-    /**
-     * イベント更新API
-     * 指定されたIDのイベントを更新する
-     * 関連するスキル、カテゴリ、スピーカーなども更新可能
-     */
   }
 };
+
+/**
+ * イベント更新API
+ * 指定されたIDのイベントを更新する
+ * 関連するスキル、カテゴリ、スピーカーなども更新可能
+ */
 export const updateEvent: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
