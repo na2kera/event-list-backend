@@ -46,7 +46,7 @@ coverage/
 
 # Prisma
 prisma/*.db
-prisma/migrations/
+# prisma/migrations/
 
 # Temporary files
 tmp/
