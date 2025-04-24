@@ -17,6 +17,12 @@ export const syncUser = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Bad Request: Missing required user or account data." });
     }
 
+    const lineId = account.provider === 'line' ? account.providerAccountId : null;
+    if (account.provider === 'line' && !lineId) {
+        console.error("Sync failed: LINE provider specified but providerAccountId is missing.");
+        return res.status(400).json({ error: "Bad Request: Missing providerAccountId for LINE user." });
+    }
+
     console.log(`Finding user by email: ${user.email}`);
     let dbUser = await prisma.user.findUnique({
       where: {
@@ -34,21 +40,40 @@ export const syncUser = async (req: Request, res: Response) => {
             email: user.email,
             image: user.image,
             emailVerified: user.emailVerified ? new Date(user.emailVerified) : null,
+            lineId: lineId,
+            stack: [],
+            tag: [],
+            goal: [],
           },
         });
-        console.log(`New user created with ID: ${dbUser.id}`);
+        console.log(`New user created with ID: ${dbUser.id} and LineID: ${lineId}`);
       } catch (createError) {
         console.error("Error creating user:", createError);
         return res.status(500).json({ error: "Failed to create user during sync", details: createError instanceof Error ? createError.message : String(createError) });
       }
     } else {
       console.log(`Found existing user with ID: ${dbUser.id}`);
+      const updateData: { image?: string; lineId?: string | null } = {};
+
       if (user.image && dbUser.image !== user.image) {
-        console.log(`Updating user image for user ID: ${dbUser.id}`);
-        await prisma.user.update({
-          where: { id: dbUser.id },
-          data: { image: user.image }
-        });
+         console.log(`Updating user image for user ID: ${dbUser.id}`);
+         updateData.image = user.image;
+      }
+
+      if (lineId && !dbUser.lineId) {
+          console.log(`Updating missing lineId for user ID: ${dbUser.id}`);
+          updateData.lineId = lineId;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+          console.log("Performing update with data:", updateData);
+          await prisma.user.update({
+              where: { id: dbUser.id },
+              data: updateData,
+          });
+          console.log("User updated.");
+      } else {
+          console.log("No updates needed for existing user.");
       }
     }
 
