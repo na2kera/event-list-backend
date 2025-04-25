@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client';
-import { Request, Response } from 'express';
-import crypto from 'crypto';
+import { PrismaClient } from "@prisma/client";
+import { Request, Response } from "express";
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
 
@@ -12,15 +12,30 @@ export const syncUser = async (req: Request, res: Response) => {
   try {
     const { user, account } = req.body;
 
-    if (!user || !user.email || !account || !account.provider || !account.providerAccountId) {
-      console.error("Sync failed: Missing required user or account data in request body.");
-      return res.status(400).json({ error: "Bad Request: Missing required user or account data." });
+    if (
+      !user ||
+      !user.email ||
+      !account ||
+      !account.provider ||
+      !account.providerAccountId
+    ) {
+      console.error(
+        "Sync failed: Missing required user or account data in request body."
+      );
+      return res
+        .status(400)
+        .json({ error: "Bad Request: Missing required user or account data." });
     }
 
-    const lineId = account.provider === 'line' ? account.providerAccountId : null;
-    if (account.provider === 'line' && !lineId) {
-        console.error("Sync failed: LINE provider specified but providerAccountId is missing.");
-        return res.status(400).json({ error: "Bad Request: Missing providerAccountId for LINE user." });
+    const lineId =
+      account.provider === "line" ? account.providerAccountId : null;
+    if (account.provider === "line" && !lineId) {
+      console.error(
+        "Sync failed: LINE provider specified but providerAccountId is missing."
+      );
+      return res.status(400).json({
+        error: "Bad Request: Missing providerAccountId for LINE user.",
+      });
     }
 
     console.log(`Finding user by email: ${user.email}`);
@@ -35,45 +50,55 @@ export const syncUser = async (req: Request, res: Response) => {
       try {
         dbUser = await prisma.user.create({
           data: {
-            id: crypto.randomUUID(),
+            id: user.id,
             name: user.name,
             email: user.email,
             image: user.image,
-            emailVerified: user.emailVerified ? new Date(user.emailVerified) : null,
+            emailVerified: user.emailVerified
+              ? new Date(user.emailVerified)
+              : null,
             lineId: lineId,
             stack: [],
             tag: [],
             goal: [],
           },
         });
-        console.log(`New user created with ID: ${dbUser.id} and LineID: ${lineId}`);
+        console.log(
+          `New user created with ID: ${dbUser.id} and LineID: ${lineId}`
+        );
       } catch (createError) {
         console.error("Error creating user:", createError);
-        return res.status(500).json({ error: "Failed to create user during sync", details: createError instanceof Error ? createError.message : String(createError) });
+        return res.status(500).json({
+          error: "Failed to create user during sync",
+          details:
+            createError instanceof Error
+              ? createError.message
+              : String(createError),
+        });
       }
     } else {
       console.log(`Found existing user with ID: ${dbUser.id}`);
       const updateData: { image?: string; lineId?: string | null } = {};
 
       if (user.image && dbUser.image !== user.image) {
-         console.log(`Updating user image for user ID: ${dbUser.id}`);
-         updateData.image = user.image;
+        console.log(`Updating user image for user ID: ${dbUser.id}`);
+        updateData.image = user.image;
       }
 
       if (lineId && !dbUser.lineId) {
-          console.log(`Updating missing lineId for user ID: ${dbUser.id}`);
-          updateData.lineId = lineId;
+        console.log(`Updating missing lineId for user ID: ${dbUser.id}`);
+        updateData.lineId = lineId;
       }
 
       if (Object.keys(updateData).length > 0) {
-          console.log("Performing update with data:", updateData);
-          await prisma.user.update({
-              where: { id: dbUser.id },
-              data: updateData,
-          });
-          console.log("User updated.");
+        console.log("Performing update with data:", updateData);
+        await prisma.user.update({
+          where: { id: dbUser.id },
+          data: updateData,
+        });
+        console.log("User updated.");
       } else {
-          console.log("No updates needed for existing user.");
+        console.log("No updates needed for existing user.");
       }
     }
 
@@ -81,7 +106,10 @@ export const syncUser = async (req: Request, res: Response) => {
       provider: account.provider,
       providerAccountId: account.providerAccountId,
     };
-    console.log(`Finding account by provider/providerAccountId:`, accountIdentifier);
+    console.log(
+      `Finding account by provider/providerAccountId:`,
+      accountIdentifier
+    );
     const existingAccount = await prisma.account.findUnique({
       where: {
         provider_providerAccountId: accountIdentifier,
@@ -89,7 +117,9 @@ export const syncUser = async (req: Request, res: Response) => {
     });
 
     if (existingAccount) {
-      console.log(`Found existing account with ID: ${existingAccount.id}. Updating tokens.`);
+      console.log(
+        `Found existing account with ID: ${existingAccount.id}. Updating tokens.`
+      );
       await prisma.account.update({
         where: {
           id: existingAccount.id,
@@ -106,7 +136,9 @@ export const syncUser = async (req: Request, res: Response) => {
       });
       console.log(`Account updated for user ID: ${existingAccount.userId}`);
     } else {
-      console.log(`Account not found. Creating new account for user ID: ${dbUser.id}`);
+      console.log(
+        `Account not found. Creating new account for user ID: ${dbUser.id}`
+      );
       try {
         const newAccount = await prisma.account.create({
           data: {
@@ -127,16 +159,27 @@ export const syncUser = async (req: Request, res: Response) => {
         console.log(`New account created with ID: ${newAccount.id}`);
       } catch (createError) {
         console.error("Error creating account:", createError);
-        return res.status(500).json({ error: "Failed to create account during sync", details: createError instanceof Error ? createError.message : String(createError) });
+        return res.status(500).json({
+          error: "Failed to create account during sync",
+          details:
+            createError instanceof Error
+              ? createError.message
+              : String(createError),
+        });
       }
     }
 
-    console.log(`--- User sync completed successfully for user email: ${user.email} ---`);
+    console.log(
+      `--- User sync completed successfully for user email: ${user.email} ---`
+    );
     res.status(200).json({ success: true, userId: dbUser.id });
   } catch (error) {
     console.error("--- Error during user sync ---");
     console.error("Request body:", JSON.stringify(req.body, null, 2));
     console.error("Error syncing user:", error);
-    res.status(500).json({ error: "Failed to sync user", details: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({
+      error: "Failed to sync user",
+      details: error instanceof Error ? error.message : String(error),
+    });
   }
 };
