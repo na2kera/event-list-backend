@@ -110,7 +110,7 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
         const eventIds = await recommendEventsForUser(user.id);
 
         // イベントカルーセルを送信
-        await sendEventCarouselToUser(lineUserId, eventIds);
+        await sendEventCarouselToUser(user.id, eventIds);
 
         console.log(`ユーザー ${lineUserId} にレコメンド結果を送信しました`);
       } catch (error) {
