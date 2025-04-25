@@ -1,10 +1,6 @@
 import prisma from "../config/prisma";
 import { User, Event } from "@prisma/client";
-import {
-  getUserById,
-  getUserWithDetailsById,
-  getMockUserById,
-} from "./userUtils";
+import { getUserByLineId } from "./userUtils";
 import { getAllEvents, getFilteredEvents } from "./eventUtils";
 import { hydeEventsForUser } from "./eventRag";
 
@@ -13,17 +9,17 @@ import { hydeEventsForUser } from "./eventRag";
  * @param userId ユーザーID
  * @returns レコメンドされたイベントの配列
  */
-export const recommendEventsForUser = async (userId: string) => {
+export const recommendEventsForUser = async (lineUserId: string) => {
   try {
     // まずすべてのイベントを取得
     const allEvents = await getAllEvents();
     console.log(`全イベント数: ${allEvents.length}`);
 
-    // ユーザー情報を取得
-    const user = await getUserById(userId);
+    // LINEのユーザーIDからユーザー情報を取得
+    const user = await getUserByLineId(lineUserId);
 
     if (!user) {
-      throw new Error(`ユーザー ${userId} が見つかりません。`);
+      throw new Error(`LINEユーザー ${lineUserId} が見つかりません。`);
     }
 
     // ユーザーの居住地と技術スタックに基づいてイベントをフィルタリング
