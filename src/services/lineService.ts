@@ -11,18 +11,18 @@ const LINE_MESSAGING_API = "https://api.line.me/v2/bot/message/push";
 
 /**
  * 特定のユーザーIDに対してLINE通知を送信する
- * @param userId ユーザーID
+ * @param lineUserId ユーザーID
  * @param message 送信するメッセージ
  * @returns 送信結果
  */
 export const sendLineNotificationToUser = async (
-  userId: string,
+  lineUserId: string,
   message: string
 ) => {
   try {
     // データベースからユーザーのLINE IDを取得
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { lineId: lineUserId },
     });
 
     if (!user || !user.lineId) {
@@ -159,7 +159,7 @@ export const sendEventCarouselToUser = async (
 
 /**
  * LINEのpostbackイベントからブックマークを追加する
- * @param userId ユーザーID
+ * @param lineUserId ユーザーID
  * @param eventId イベントID
  * @returns 処理結果
  */
