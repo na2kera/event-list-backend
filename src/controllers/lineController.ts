@@ -8,7 +8,7 @@ import {
   sendEventReminders,
 } from "../services/lineService";
 
-import { recommendEventsForUser } from "../services/recommendEventsService";
+import { recommendEventsForUser } from "../utils/recommendEvents";
 
 /**
  * 特定のユーザーIDに対してLINE通知を送信するコントローラー
@@ -103,62 +103,7 @@ export const sendEventRecommend: RequestHandler = async (
   }
 };
 
-/**
- * LINEのWebhookを処理するコントローラー
- * postbackイベントからブックマーク追加などの処理を行う
- */
-export const handleLineWebhook: RequestHandler = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    // LINE Platformからのリクエストを検証（実際の実装では署名検証なども行う）
-    const events = req.body.events;
-
-    if (!events || !Array.isArray(events)) {
-      // 検証用のレスポンスを返す（LINE Platformは200 OKを期待している）
-      res.status(200).end();
-      return;
-    }
-
-    // 各イベントを処理
-    for (const event of events) {
-      if (event.type === "postback") {
-        // postbackデータをパース
-        const data = new URLSearchParams(event.postback.data);
-        const action = data.get("action");
-
-        if (action === "bookmark") {
-          const userId = data.get("userId");
-          const eventId = data.get("eventId");
-
-          if (userId && eventId) {
-            try {
-              const result = await addBookmarkFromLine(userId, eventId);
-
-              // ユーザーに結果を通知
-              await sendLineNotificationToUser(
-                userId,
-                result.isNew
-                  ? `イベントをブックマークに追加しました！`
-                  : `このイベントは既にブックマークに追加されています`
-              );
-            } catch (error) {
-              console.error("ブックマーク処理エラー:", error);
-            }
-          }
-        }
-      }
-    }
-
-    // LINE Platformには常に200 OKを返す
-    res.status(200).end();
-  } catch (error) {
-    console.error("LINEウェブフックの処理に失敗しました:", error);
-    // エラーが発生しても200を返す（LINE Platformの要件）
-    res.status(200).end();
-  }
-};
+// Webhook処理は webhookController.ts に移動しました
 
 /**
  * LINE認証コードからトークンとプロフィール情報を取得し、ユーザー情報を保存するコントローラー

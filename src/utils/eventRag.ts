@@ -196,7 +196,7 @@ const eventRecommendationSchema = z.object({
 });
 
 // ユーザー情報に基づいてイベントをランク付けするRAGチェーン
-export const rankEventsForUser = async (
+export const hydeEventsForUser = async (
   place: string | null,
   stack: string[] | null,
   tag: string[] | null,
@@ -324,10 +324,33 @@ export const rankEventsForUser = async (
       eventDocs,
       embeddings
     );
-    const results = await tempVectorStore.similaritySearch(query, 50); // 上位50件を近い順で取得
+
+    // 類似度スコア付きで検索結果を取得（withScoreは類似度スコアを含める）
+    const resultsWithScores = await tempVectorStore.similaritySearchWithScore(
+      query,
+      50
+    );
+
+    // 厳格な類似度しきい値を設定（0.7は高い類似度を意味する、値が大きいほど類似）
+    // 注: スコアの形式によっては調整が必要（コサイン類似度の場合は0.7など、ユークリッド距離の場合は小さい値が良い）
+    const SIMILARITY_THRESHOLD = 0.7;
+
+    // しきい値を超える結果のみをフィルタリング
+    const filteredResults = resultsWithScores.filter(([doc, score]) => {
+      // スコアがしきい値以上のものだけを残す（コサイン類似度の場合）
+      return score >= SIMILARITY_THRESHOLD;
+    });
+
+    console.log(
+      `検索結果: 合計${resultsWithScores.length}件、しきい値(${SIMILARITY_THRESHOLD})以上: ${filteredResults.length}件`
+    );
 
     // 結果からイベントIDのリストだけを返す
-    const eventIds = results.map((doc) => doc.metadata.id);
+    const eventIds = filteredResults.map(([doc, score]) => {
+      console.log(`イベント「${doc.metadata.title}」の類似度スコア: ${score}`);
+      return doc.metadata.id;
+    });
+
     return eventIds;
   };
 
@@ -357,9 +380,14 @@ export const rankEventsForUser = async (
     }
 
     // 上位のイベントIDを取得
-    console.log("選択されたイベントID:", eventIds[0]);
+    console.log(`選択されたイベント数: ${eventIds.length}`);
+    if (eventIds.length > 0) {
+      console.log("最も関連性の高いイベントID:", eventIds[0]);
+    }
 
-    return eventIds;
+    // 最大10件までに制限
+    const limitedEventIds = eventIds.slice(0, 10);
+    return limitedEventIds;
   } catch (error) {
     console.error("RAGチェーン実行エラー:", error);
     throw error;

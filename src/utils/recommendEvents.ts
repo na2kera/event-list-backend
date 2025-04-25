@@ -4,9 +4,9 @@ import {
   getUserById,
   getUserWithDetailsById,
   getMockUserById,
-} from "../utils/userUtils";
-import { getAllEvents, getFilteredEvents } from "../utils/eventUtils";
-import { rankEventsForUser } from "../utils/eventRag";
+} from "./userUtils";
+import { getAllEvents, getFilteredEvents } from "./eventUtils";
+import { hydeEventsForUser } from "./eventRag";
 
 /**
  * ユーザーIDに基づいてイベントをレコメンドする
@@ -36,7 +36,7 @@ export const recommendEventsForUser = async (userId: string) => {
 
     console.log(`フィルタリング後のイベント数: ${filteredEvents.length}`);
 
-    const recommendedEventIds = await rankEventsForUser(
+    const recommendedEventIds = await hydeEventsForUser(
       user.place,
       user.stack,
       user.tag,
