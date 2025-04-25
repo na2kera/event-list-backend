@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { RequestHandler } from "express";
 import prisma from "../config/prisma";
 import { Prisma } from "@prisma/client";
-import { recommendEventsForUser } from "../services/recommendEventsService";
+import { recommendEventsForUser } from "../utils/recommendEvents";
 
 export const getEvents: RequestHandler = async (
   req: Request,
@@ -292,30 +292,6 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
       error: "Internal server error",
       message: "イベント検索中にエラーが発生しました",
     });
-  }
-};
-
-export const recommendEvents: RequestHandler = async (req, res, next) => {
-  try {
-    const { userId } = req.body;
-    if (typeof userId !== "string") {
-      res.status(400).json({ error: "Invalid parameters" });
-      return;
-    }
-    try {
-      await recommendEventsForUser(userId);
-
-      // 取得した活動データをそのままJSON形式で返す
-      res
-        .status(200)
-        .json({ success: true, message: "イベント推薦の処理が完了しました" });
-    } catch (error) {
-      console.error("Error in recommendEvents:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  } catch (error) {
-    console.error("Error in recommendEvents:", error);
-    res.status(500).json({ error: "Internal server error" });
   }
 };
 

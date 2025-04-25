@@ -2,10 +2,10 @@ import { Router } from "express";
 import {
   sendLineNotification,
   sendEventRecommend,
-  handleLineWebhook,
   processLineAuth,
   sendEventReminderNotifications,
 } from "../controllers/lineController";
+import { handleLineWebhook } from "../controllers/webhookController";
 
 const router = Router();
 
