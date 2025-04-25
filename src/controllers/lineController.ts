@@ -9,6 +9,7 @@ import {
 } from "../services/lineService";
 
 import { recommendEventsForUser } from "../utils/recommendEvents";
+import { getUserByLineId } from "../utils/userUtils";
 
 /**
  * 特定のユーザーIDに対してLINE通知を送信するコントローラー
@@ -28,8 +29,19 @@ export const sendLineNotification: RequestHandler = async (
       return;
     }
 
+    // データベースからユーザーのLINE IDを取得
+    const user = await getUserByLineId(userId);
+
+    if (!user || !user.lineId) {
+      res.status(404).json({
+        success: false,
+        message: "ユーザーが見つからないか、LINE連携が行われていません",
+      });
+      return;
+    }
+
     try {
-      const result = await sendLineNotificationToUser(userId, message);
+      const result = await sendLineNotificationToUser(user.lineId, message);
       res.status(200).json(result);
     } catch (error) {
       if (

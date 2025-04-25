@@ -57,7 +57,7 @@ export const handleLineWebhook: RequestHandler = async (
 /**
  * postbackイベントを処理する関数
  */
-const handlePostbackEvent = async (event: any, userId: string) => {
+const handlePostbackEvent = async (event: any, lineUserId: string) => {
   try {
     // postbackデータをパース
     const data = new URLSearchParams(event.postback.data);
@@ -68,11 +68,11 @@ const handlePostbackEvent = async (event: any, userId: string) => {
 
       if (eventId) {
         try {
-          const result = await addBookmarkFromLine(userId, eventId);
+          const result = await addBookmarkFromLine(lineUserId, eventId);
 
           // ユーザーに結果を通知
           await sendLineNotificationToUser(
-            userId,
+            lineUserId,
             result.isNew
               ? `イベントをブックマークに追加しました！`
               : `このイベントは既にブックマークに追加されています`
@@ -138,6 +138,8 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
         const successCount = result.results.filter(
           (r) => r.success && r.lineId === lineUserId
         ).length;
+
+        console.log("リマインド結果:", successCount);
 
         if (successCount > 0) {
           await sendLineNotificationToUser(
