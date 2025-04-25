@@ -92,9 +92,9 @@ export const sendEventCarouselToUser = async (
   eventIds: string[]
 ) => {
   try {
-    // LINEのユーザーIDでデータベースからユーザーを検索
+    // ユーザーIDでデータベースからユーザーを検索
     const user = await prisma.user.findUnique({
-      where: { lineId: userId },
+      where: { id: userId },
     });
 
     if (!user) {

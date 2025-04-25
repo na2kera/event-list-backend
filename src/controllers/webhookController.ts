@@ -1,12 +1,13 @@
 import { Request, Response, RequestHandler } from "express";
-import { 
-  sendLineNotificationToUser, 
+import {
+  sendLineNotificationToUser,
   sendEventCarouselToUser,
   addBookmarkFromLine,
-  sendEventReminders
+  sendEventReminders,
 } from "../services/lineService";
 import { recommendEventsForUser } from "../utils/recommendEvents";
 import { processRagQuery } from "../services/ragService";
+import { getUserByLineId } from "../utils/userUtils";
 
 /**
  * LINEのWebhookを処理するコントローラー
@@ -30,17 +31,17 @@ export const handleLineWebhook: RequestHandler = async (
     // 各イベントを処理
     for (const event of events) {
       // ユーザーIDを取得
-      const userId = event.source?.userId;
-      if (!userId) continue; // ユーザーIDがない場合は処理をスキップ
+      const lineUserId = event.source?.userId;
+      if (!lineUserId) continue; // ユーザーIDがない場合は処理をスキップ
 
       // postbackイベントの処理
       if (event.type === "postback") {
-        await handlePostbackEvent(event, userId);
+        await handlePostbackEvent(event, lineUserId);
       }
-      
+
       // テキストメッセージの処理
       else if (event.type === "message" && event.message?.type === "text") {
-        await handleTextMessageEvent(event, userId);
+        await handleTextMessageEvent(event, lineUserId);
       }
     }
 
@@ -89,86 +90,99 @@ const handlePostbackEvent = async (event: any, userId: string) => {
 /**
  * テキストメッセージイベントを処理する関数
  */
-const handleTextMessageEvent = async (event: any, userId: string) => {
+const handleTextMessageEvent = async (event: any, lineUserId: string) => {
   try {
     const messageText = event.message.text;
-    
+
     // 「レコメンド」というテキストを受け取った場合の処理
     if (messageText === "レコメンド") {
       try {
-        console.log(`ユーザー ${userId} からレコメンドリクエストを受信しました`);
-        
+        console.log(
+          `ユーザー ${lineUserId} からレコメンドリクエストを受信しました`
+        );
+
+        const user = await getUserByLineId(lineUserId);
+        if (!user) {
+          throw new Error(`ユーザー ${lineUserId} が見つかりません。`);
+        }
+
         // レコメンドAPIを呼び出す
-        const eventIds = await recommendEventsForUser(userId);
-        
+        const eventIds = await recommendEventsForUser(user.id);
+
         // イベントカルーセルを送信
-        await sendEventCarouselToUser(userId, eventIds);
-        
-        console.log(`ユーザー ${userId} にレコメンド結果を送信しました`);
+        await sendEventCarouselToUser(user.id, eventIds);
+
+        console.log(`ユーザー ${lineUserId} にレコメンド結果を送信しました`);
       } catch (error) {
         console.error("レコメンド処理エラー:", error);
-        
+
         // エラーが発生した場合はユーザーに通知
         await sendLineNotificationToUser(
-          userId,
+          lineUserId,
           "レコメンドの取得中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
         );
       }
     }
-    
+
     // 「リマインド」というテキストを受け取った場合の処理
     else if (messageText === "リマインド") {
       try {
-        console.log(`ユーザー ${userId} からリマインドリクエストを受信しました`);
-        
+        console.log(
+          `ユーザー ${lineUserId} からリマインドリクエストを受信しました`
+        );
+
         // リマインド処理を実行
         const result = await sendEventReminders();
-        
+
         // 結果をユーザーに通知
-        const successCount = result.results.filter(r => r.success && r.lineId === userId).length;
-        
+        const successCount = result.results.filter(
+          (r) => r.success && r.lineId === lineUserId
+        ).length;
+
         if (successCount > 0) {
           await sendLineNotificationToUser(
-            userId,
+            lineUserId,
             `${successCount}件のイベントリマインドを送信しました。ブックマークしたイベントをチェックしてください。`
           );
         } else {
           await sendLineNotificationToUser(
-            userId,
+            lineUserId,
             "リマインド対象のイベントが見つかりませんでした。イベントをブックマークすると、開催1週間前にリマインドが届きます。"
           );
         }
-        
-        console.log(`ユーザー ${userId} にリマインド結果を送信しました: ${successCount}件`);
+
+        console.log(
+          `ユーザー ${lineUserId} にリマインド結果を送信しました: ${successCount}件`
+        );
       } catch (error) {
         console.error("リマインド処理エラー:", error);
-        
+
         // エラーが発生した場合はユーザーに通知
         await sendLineNotificationToUser(
-          userId,
+          lineUserId,
           "リマインド処理中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
         );
       }
     }
-    
+
     // 上記以外のテキストメッセージはRAGで処理
     else {
       try {
-        console.log(`ユーザー ${userId} からの質問: ${messageText}`);
-        
+        console.log(`ユーザー ${lineUserId} からの質問: ${messageText}`);
+
         // RAG処理を実行
         const answer = await processRagQuery(messageText);
-        
+
         // 回答を送信
-        await sendLineNotificationToUser(userId, answer);
-        
-        console.log(`ユーザー ${userId} にRAG回答を送信しました`);
+        await sendLineNotificationToUser(lineUserId, answer);
+
+        console.log(`ユーザー ${lineUserId} にRAG回答を送信しました`);
       } catch (error) {
         console.error("RAG処理エラー:", error);
-        
+
         // エラーが発生した場合はユーザーに通知
         await sendLineNotificationToUser(
-          userId,
+          lineUserId,
           "質問の処理中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
         );
       }
