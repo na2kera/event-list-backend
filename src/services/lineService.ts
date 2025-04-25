@@ -92,13 +92,13 @@ export const sendEventCarouselToUser = async (
   eventIds: string[]
 ) => {
   try {
-    // データベースからユーザーのLINE IDを取得
+    // LINEのユーザーIDでデータベースからユーザーを検索
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { lineId: userId },
     });
 
-    if (!user || !user.lineId) {
-      throw new Error(`ユーザー(${userId})のLINE IDが見つかりません`);
+    if (!user) {
+      throw new Error(`ユーザー(${userId})が見つかりません`);
     }
 
     // イベント情報を取得
@@ -163,12 +163,24 @@ export const sendEventCarouselToUser = async (
  * @param eventId イベントID
  * @returns 処理結果
  */
-export const addBookmarkFromLine = async (userId: string, eventId: string) => {
+export const addBookmarkFromLine = async (
+  lineUserId: string,
+  eventId: string
+) => {
   try {
+    // LINEのユーザーIDからデータベースのユーザーを取得
+    const user = await prisma.user.findUnique({
+      where: { lineId: lineUserId },
+    });
+
+    if (!user) {
+      throw new Error(`ユーザー(${lineUserId})が見つかりません`);
+    }
+
     // すでにブックマークが存在するか確認
     const existingBookmark = await prisma.bookmark.findFirst({
       where: {
-        userId,
+        userId: user.id,
         eventId,
       },
     });
@@ -185,7 +197,7 @@ export const addBookmarkFromLine = async (userId: string, eventId: string) => {
     await prisma.bookmark.create({
       data: {
         id: crypto.randomUUID(),
-        userId,
+        userId: user.id,
         eventId,
         createdAt: new Date(),
         updatedAt: new Date(),
