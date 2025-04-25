@@ -4,6 +4,27 @@ import fs from "fs";
 import path from "path";
 
 /**
+ * LINEのユーザーIDに基づいてユーザー情報をデータベースから取得する
+ * @param lineUserId LINEのユーザーID
+ * @returns ユーザー情報、見つからない場合はnull
+ */
+export const getUserByLineId = async (lineUserId: string): Promise<User | null> => {
+  try {
+    // Prismaを使用してユーザーをLINE IDで検索
+    const user = await prisma.user.findUnique({
+      where: {
+        lineId: lineUserId,
+      },
+    });
+
+    return user;
+  } catch (error) {
+    console.error("LINE IDからのユーザー情報取得エラー:", error);
+    throw error;
+  }
+};
+
+/**
  * ユーザーIDに基づいてユーザー情報をデータベースから取得する
  * @param userId ユーザーのID
  * @returns ユーザー情報、見つからない場合はnull
