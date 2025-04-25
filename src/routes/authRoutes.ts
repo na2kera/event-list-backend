@@ -3,6 +3,12 @@ import { syncUser } from "../controllers/authController";
 
 const router = express.Router();
 
-router.post("/sync", syncUser);
+router.post("/sync", async (req, res, next) => {
+  try {
+    await syncUser(req, res);
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;
