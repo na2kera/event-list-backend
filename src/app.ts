@@ -23,7 +23,7 @@ const prisma = new PrismaClient();
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "https://event-list-frontend.vercel.app", // 本番環境のフロントエンドURL
+  "https://event-list-nine.vercel.app", // 本番環境のフロントエンドURL
   process.env.FRONTEND_URL || "", // 環境変数からフロントエンドURLを取得
 ].filter(Boolean); // 空の値を除外
 
