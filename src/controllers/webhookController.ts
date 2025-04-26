@@ -5,7 +5,10 @@ import {
   addBookmarkFromLine,
   sendEventReminders,
 } from "../services/lineService";
-import { recommendEventsForUser } from "../utils/recommendEvents";
+import {
+  recommendEventsByHyDE,
+  recommendEventsByKeyword,
+} from "../utils/recommendEvents";
 import { processRagQuery } from "../services/ragService";
 import { getUserByLineId } from "../utils/userUtils";
 
@@ -94,8 +97,8 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
   try {
     const messageText = event.message.text;
 
-    // 「レコメンド」というテキストを受け取った場合の処理
-    if (messageText === "レコメンド") {
+    // 「レコメンド１」というテキストを受け取った場合の処理（HyDEベース）
+    if (messageText === "レコメンド１") {
       try {
         console.log(
           `ユーザー ${lineUserId} からレコメンドリクエストを受信しました`
@@ -106,13 +109,65 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           throw new Error(`ユーザー ${lineUserId} が見つかりません。`);
         }
 
-        // レコメンドAPIを呼び出す
-        const eventIds = await recommendEventsForUser(user.id);
+        // HyDEベースのレコメンドAPIを呼び出す
+        const eventIds = await recommendEventsByHyDE(user.id);
 
         // イベントカルーセルを送信
         await sendEventCarouselToUser(user.id, eventIds);
 
+        // ユーザーにレコメンドタイプを通知
+        await sendLineNotificationToUser(
+          lineUserId,
+          "ベクトル検索（HyDE）によるレコメンド結果です。"
+        );
+
         console.log(`ユーザー ${lineUserId} にレコメンド結果を送信しました`);
+      } catch (error) {
+        console.error("レコメンド処理エラー:", error);
+
+        // エラーが発生した場合はユーザーに通知
+        await sendLineNotificationToUser(
+          lineUserId,
+          "レコメンドの取得中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
+        );
+      }
+    }
+
+    // 「レコメンド２」というテキストを受け取った場合の処理（キーワードベース）
+    else if (messageText === "レコメンド２") {
+      try {
+        console.log(
+          `ユーザー ${lineUserId} からキーワードベースのレコメンドリクエストを受信しました`
+        );
+
+        // ユーザー情報が必要
+        const user = await getUserByLineId(lineUserId);
+        if (!user) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "ユーザー情報が見つかりません。まずはプロフィール設定をお願いします。"
+          );
+          return;
+        }
+
+        // キーワードベースのレコメンドAPIを呼び出す
+        const recommendedEvents = await recommendEventsByKeyword(user.id);
+
+        // イベントIDの配列を取得
+        const eventIds = recommendedEvents.map((event) => event.eventId);
+
+        // イベントカルーセルを送信
+        await sendEventCarouselToUser(user.id, eventIds);
+
+        // ユーザーにレコメンドタイプを通知
+        await sendLineNotificationToUser(
+          lineUserId,
+          "キーワードベースのレコメンド結果です。関連性スコア70以上のイベントを表示しています。"
+        );
+
+        console.log(
+          `ユーザー ${lineUserId} にキーワードベースのレコメンド結果を送信しました`
+        );
       } catch (error) {
         console.error("レコメンド処理エラー:", error);
 

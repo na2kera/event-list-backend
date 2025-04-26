@@ -1,18 +1,29 @@
 import { User, Event } from "@prisma/client";
 import { getUserById } from "./userUtils";
-import { getAllEvents, getFilteredEvents, saveOrUpdateEvents } from "./eventUtils";
+import {
+  getAllEvents,
+  getFilteredEvents,
+  saveOrUpdateEvents,
+} from "./eventUtils";
 import { hydeEventsForUser } from "./eventRag";
 import {
   fetchAndConvertConnpassEvents,
   UserProfile,
 } from "./connpassEventUtils";
+import {
+  generateKeywordsAndFetchEvents,
+  LLMRecommendedEvent,
+  rankEventsByKeywordMatch,
+  selectOptimalEventsWithLLM,
+  UserInfo,
+} from "./keywordRecommendation";
 
 /**
- * ユーザーIDに基づいてイベントをレコメンドする
+ * ユーザーIDに基づいてHyDEアルゴリズムでイベントをレコメンドする
  * @param userId ユーザーID
  * @returns レコメンドされたイベントの配列
  */
-export const recommendEventsForUser = async (userId: string) => {
+export const recommendEventsByHyDE = async (userId: string) => {
   try {
     // ユーザーIDからユーザー情報を取得
     const user = await getUserById(userId);
@@ -55,14 +66,17 @@ export const recommendEventsForUser = async (userId: string) => {
         console.log(
           `Connpass APIから${connpassEvents.length}件のイベントを取得しました`
         );
-        
+
         // 取得したイベントをDBに保存または更新する
         if (connpassEvents.length > 0) {
           try {
             const savedEvents = await saveOrUpdateEvents(connpassEvents);
             console.log(`${savedEvents.length}件のイベントをDBに保存しました`);
           } catch (saveError) {
-            console.error("ConnpassイベントのDB保存中にエラーが発生しました:", saveError);
+            console.error(
+              "ConnpassイベントのDB保存中にエラーが発生しました:",
+              saveError
+            );
             // 保存に失敗してもレコメンド処理は続行する
           }
         }
@@ -91,5 +105,80 @@ export const recommendEventsForUser = async (userId: string) => {
   } catch (error) {
     console.error("イベント推薦エラー:", error);
     throw error;
+  }
+};
+
+/**
+ * ユーザーIDに基づいてキーワードを生成して、それに基づいてイベントを推薦する統合関数
+ * @param userId ユーザーID
+ * @param fromDate 検索開始日（YYYYMMDD形式、デフォルト：今日）
+ * @param toDate 検索終了日（YYYYMMDD形式、デフォルト：14日後）
+ * @returns LLMが選んだ推薦イベントの配列
+ */
+export const recommendEventsByKeyword = async (
+  userId: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<LLMRecommendedEvent[]> => {
+  try {
+    console.log("イベント推薦プロセスを開始します...");
+
+    // ユーザーIDからユーザー情報を取得
+    const user = await getUserById(userId);
+
+    if (!user) {
+      throw new Error(`ユーザー ${userId} が見つかりません。`);
+    }
+
+    // UserInfoオブジェクトを作成
+    const userInfo: UserInfo = {
+      place: user.place,
+      stack: user.stack,
+      tag: user.tag,
+      level: user.level,
+      goal: user.goal,
+    };
+
+    // 1. キーワードを生成してConnpass APIでイベントを取得
+    const { events, keywords } = await generateKeywordsAndFetchEvents(
+      userInfo,
+      fromDate,
+      toDate
+    );
+
+    if (events.length === 0) {
+      console.log("イベントが見つかりませんでした。");
+      return [];
+    }
+
+    // 2. イベントをキーワードの一致度でランキング付け
+    const rankedEvents = rankEventsByKeywordMatch(events, keywords, userInfo, 20);
+
+    if (rankedEvents.length === 0) {
+      console.log("ランキング付けされたイベントがありません。");
+      return [];
+    }
+
+    // 3. LLMに最適なイベントを選択させる
+    const recommendedEvents = await selectOptimalEventsWithLLM(
+      rankedEvents,
+      userInfo
+    );
+
+    // 4. 関連性スコアが一定以上のイベントのみをフィルタリング
+    const RELEVANCE_THRESHOLD = 70; // しきい値：70点以上
+    const filteredEvents = recommendedEvents.filter(
+      (event) => event.relevanceScore >= RELEVANCE_THRESHOLD
+    );
+
+    console.log(
+      `${recommendedEvents.length}件のイベントから、スコア${RELEVANCE_THRESHOLD}以上の${filteredEvents.length}件を選出しました。`
+    );
+    console.log("イベント推薦プロセスが完了しました。");
+
+    return filteredEvents;
+  } catch (error) {
+    console.error("イベント推薦エラー:", error);
+    return [];
   }
 };

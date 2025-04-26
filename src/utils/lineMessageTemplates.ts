@@ -119,7 +119,8 @@ export const createEventRecommendlMessage = (
         contents: [
           {
             type: "button",
-            style: "link",
+            style: "primary",
+            color: "#4169E1", // ロイヤルブルー
             height: "sm",
             action: {
               type: "uri",
@@ -129,7 +130,8 @@ export const createEventRecommendlMessage = (
           },
           {
             type: "button",
-            style: "link",
+            style: "secondary",
+            color: "#FF6B6E", // ピンク系
             height: "sm",
             action: {
               type: "postback",
@@ -137,6 +139,50 @@ export const createEventRecommendlMessage = (
               data: `action=bookmark&eventId=${event.id}&userId=${userId}`,
             },
           },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              {
+                type: "box",
+                layout: "vertical",
+                contents: [
+                  {
+                    type: "text",
+                    text: event.format === "ONLINE" ? "オンライン" : event.format === "HYBRID" ? "ハイブリッド" : "オフライン",
+                    size: "xs",
+                    color: event.format === "ONLINE" ? "#1DB446" : event.format === "HYBRID" ? "#9932CC" : "#FF8C00",
+                    align: "center",
+                    weight: "bold"
+                  }
+                ],
+                width: "60%",
+                backgroundColor: event.format === "ONLINE" ? "#E8F9E9" : event.format === "HYBRID" ? "#F1E8F9" : "#F9F1E8",
+                cornerRadius: "4px",
+                paddingAll: "2px"
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                contents: [
+                  {
+                    type: "text",
+                    text: event.eventType || "イベント",
+                    size: "xs",
+                    color: "#666666",
+                    align: "center",
+                    weight: "bold"
+                  }
+                ],
+                width: "40%",
+                backgroundColor: "#F5F5F5",
+                cornerRadius: "4px",
+                paddingAll: "2px"
+              }
+            ],
+            spacing: "xs",
+            margin: "md"
+          }
         ],
         flex: 0,
       },

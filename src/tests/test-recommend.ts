@@ -1,8 +1,8 @@
-import { recommendEventsForUser } from "../utils/recommendEvents";
+import { recommendEventsByHyDE } from "../utils/recommendEvents";
 import { getUserById } from "../utils/userUtils";
 import { Event } from "@prisma/client";
 import dotenv from "dotenv";
-
+import { recommendEventsByKeyword } from "../utils/recommendEvents";
 // 環境変数の読み込み
 dotenv.config();
 
@@ -39,7 +39,7 @@ async function testRecommendEvents() {
 
     // レコメンド処理の実行
     const startTime = Date.now();
-    const recommendedEventIds = await recommendEventsForUser(testUserId);
+    const recommendedEventIds = await recommendEventsByKeyword(testUserId);
     const endTime = Date.now();
 
     console.log(
@@ -50,9 +50,12 @@ async function testRecommendEvents() {
     console.log(`レコメンドされたイベント数: ${recommendedEventIds.length}件`);
 
     if (recommendedEventIds.length > 0) {
-      console.log("\nレコメンドされたイベントID:");
-      recommendedEventIds.forEach((eventId, index) => {
-        console.log(`${index + 1}. ${eventId}`);
+      console.log("\nレコメンドされたイベント:");
+      recommendedEventIds.forEach((event, index) => {
+        console.log(`${index + 1}. ID: ${event.eventId}`);
+        console.log(`   タイトル: ${event.title}`);
+        console.log(`   関連性スコア: ${event.relevanceScore}`);
+        console.log('---');
       });
     } else {
       console.log("レコメンドされたイベントはありませんでした。");

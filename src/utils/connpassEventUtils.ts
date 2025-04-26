@@ -4,6 +4,8 @@ import {
   ConnpassEventV2,
   ConnpassSearchParamsV2,
 } from "../services/connpassService";
+import { getDateRangeWithDefaults } from "./dateUtils";
+import { convertPrefectureToCode } from "./prefectureUtils";
 
 /**
  * ユーザープロファイル型定義
@@ -100,7 +102,7 @@ export const convertConnpassEventToPrismaEvent = (
     address: address,
     location: null,
     detailUrl: connpassEvent.url,
-    organizationId: "connpass_org_default", // 組織IDはデフォルト値を使用
+    organizationId: "cm8h2ibpv0000rycorzgynzp4",
     createdAt: new Date(),
     updatedAt: new Date(),
     image: null,
@@ -157,27 +159,7 @@ export const fetchAndConvertConnpassEvents = async (
     // 注意: prefectureパラメータは英語で指定する必要がある
     if (prefecture) {
       // 都道府県名を英語表記に変換
-      let prefectureCode = "";
-      if (prefecture.includes("東京")) {
-        prefectureCode = "tokyo";
-      } else if (prefecture.includes("大阪")) {
-        prefectureCode = "osaka";
-      } else if (prefecture.includes("京都")) {
-        prefectureCode = "kyoto";
-      } else if (prefecture.includes("兵庫")) {
-        prefectureCode = "hyogo";
-      } else if (prefecture.includes("福岡")) {
-        prefectureCode = "fukuoka";
-      } else if (prefecture.includes("北海道")) {
-        prefectureCode = "hokkaido";
-      } else if (prefecture.includes("愛知")) {
-        prefectureCode = "aichi";
-      } else if (prefecture.includes("神奈川")) {
-        prefectureCode = "kanagawa";
-      } else {
-        // その他の場合はオンラインも含めて取得
-        prefectureCode = "online";
-      }
+      const prefectureCode = convertPrefectureToCode(prefecture);
 
       params.prefectures = prefectureCode;
     } else {
@@ -224,36 +206,23 @@ export const fetchAndConvertConnpassEvents = async (
 
 /**
  * キーワードを直接指定してConnpassAPIでイベントを検索する関数
- * @param keywords 検索キーワード（AND条件）
- * @param keywordsOr 検索キーワード（OR条件）
+ * @param requiredKeywords 必須キーワード（AND条件）この中のどれか1つは含まれる必要があります
+ * @param optionalKeywords オプションキーワード（OR条件）
  * @param place 場所/都道府県
  * @param fromDate 検索開始日（YYYYMMDD形式、デフォルト：今日）
  * @param toDate 検索終了日（YYYYMMDD形式、デフォルト：14日後）
  * @returns 変換されたPrismaのEvent型の配列
  */
 export const fetchConnpassEventsByKeywords = async (
-  keywords: string[],
-  keywordsOr: string[] = [],
+  requiredKeywords: string[],
+  optionalKeywords: string[] = [],
   place?: string | null,
   fromDate?: string,
   toDate?: string
 ): Promise<Event[]> => {
   try {
-    // 日付範囲の設定（デフォルト：今日から14日後まで）
-    const today = new Date();
-    const endDate = new Date(today);
-    endDate.setDate(today.getDate() + 14);
-
-    // 日付をYYYYMMDD形式に変換
-    const formatDate = (date: Date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      return `${year}${month}${day}`;
-    };
-
-    const ymd = fromDate || formatDate(today);
-    const ymdEnd = toDate || formatDate(endDate);
+    // 日付範囲の取得（デフォルト：今日から14日後まで）
+    const [ymd, ymdEnd] = getDateRangeWithDefaults(fromDate, toDate);
 
     // ConnpassAPI検索パラメータの設定
     const params: ConnpassSearchParamsV2 = {
@@ -264,13 +233,14 @@ export const fetchConnpassEventsByKeywords = async (
       count: 100, // 最大取得件数
     };
 
-    // キーワードの設定
-    if (keywords.length > 0) {
-      params.keyword = keywords;
+    // 必須キーワードをAND条件で設定（この中のどれか1つは含まれる必要がある）
+    if (requiredKeywords.length > 0) {
+      params.keyword = requiredKeywords;
     }
 
-    if (keywordsOr.length > 0) {
-      params.keyword_or = keywordsOr;
+    // オプションキーワードをOR条件で設定
+    if (optionalKeywords.length > 0) {
+      params.keyword_or = optionalKeywords;
     }
 
     // 居住地が設定されている場合は、その地域のイベントをフィルタリング
