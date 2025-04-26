@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { RequestHandler } from "express";
 import {
-  searchConnpassEventsV2,
-  ConnpassSearchOptionsV2,
+  fetchConnpassEventsV2,
+  ConnpassSearchParamsV2,
 } from "../services/connpassService";
 import dotenv from "dotenv";
 
@@ -35,34 +35,38 @@ export const searchConnpassEvents: RequestHandler = async (
     }
 
     // リクエストパラメータの取得
-    const options: ConnpassSearchOptionsV2 = {};
+    const options: ConnpassSearchParamsV2 = {
+      api_key: CONNPASS_API_KEY
+    };
 
     // キーワード（AND条件）
     if (req.query.keywords) {
-      options.keywords = Array.isArray(req.query.keywords)
+      options.keyword = Array.isArray(req.query.keywords)
         ? (req.query.keywords as string[])
         : [req.query.keywords as string];
     }
 
     // キーワード（OR条件）
     if (req.query.keywordsOr) {
-      options.keywordsOr = Array.isArray(req.query.keywordsOr)
+      options.keyword_or = Array.isArray(req.query.keywordsOr)
         ? (req.query.keywordsOr as string[])
         : [req.query.keywordsOr as string];
     }
 
     // 日付範囲
     if (req.query.startDate) {
-      options.startDate = new Date(req.query.startDate as string);
+      const startDate = new Date(req.query.startDate as string);
+      options.ymd = startDate.toISOString().split('T')[0].replace(/-/g, '');
     }
 
     if (req.query.endDate) {
-      options.endDate = new Date(req.query.endDate as string);
+      const endDate = new Date(req.query.endDate as string);
+      options.ymd_end = endDate.toISOString().split('T')[0].replace(/-/g, '');
     }
 
     // タグ
     if (req.query.tags) {
-      options.tags = Array.isArray(req.query.tags)
+      options.tag = Array.isArray(req.query.tags)
         ? (req.query.tags as string[])
         : [req.query.tags as string];
     }
@@ -74,7 +78,7 @@ export const searchConnpassEvents: RequestHandler = async (
 
     // グループID
     if (req.query.groupId) {
-      options.groupId = parseInt(req.query.groupId as string, 10);
+      options.group_id = parseInt(req.query.groupId as string, 10);
     }
 
     // 取得件数
@@ -96,13 +100,13 @@ export const searchConnpassEvents: RequestHandler = async (
     }
 
     // イベント検索の実行
-    const events = await searchConnpassEventsV2(CONNPASS_API_KEY, options);
+    const response = await fetchConnpassEventsV2(options);
 
     // レスポンスの返却
     res.status(200).json({
       success: true,
-      count: events.length,
-      events,
+      count: response.count,
+      events: response.events,
     });
   } catch (error) {
     console.error("Connpassイベント検索エラー:", error);
@@ -148,12 +152,13 @@ export const getConnpassEventById: RequestHandler = async (
     }
 
     // イベントIDで検索
-    const events = await searchConnpassEventsV2(CONNPASS_API_KEY, {
+    const response = await fetchConnpassEventsV2({
+      api_key: CONNPASS_API_KEY,
       count: 100, // 多めに取得してからフィルタリング
     });
 
     // IDでフィルタリング
-    const filteredEvents = events.filter((event) => event.id === eventId);
+    const filteredEvents = response.events.filter((event) => event.id === eventId);
 
     if (filteredEvents.length === 0) {
       res.status(404).json({
@@ -221,18 +226,22 @@ export const getUpcomingConnpassEvents: RequestHandler = async (
     endDate.setDate(today.getDate() + days);
 
     // イベント検索の実行
-    const events = await searchConnpassEventsV2(CONNPASS_API_KEY, {
-      startDate: today,
-      endDate,
-      keywords: keyword ? [keyword] : undefined,
+    const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
+    const endDateStr = endDate.toISOString().split('T')[0].replace(/-/g, '');
+    
+    const response = await fetchConnpassEventsV2({
+      api_key: CONNPASS_API_KEY,
+      ymd: todayStr,
+      ymd_end: endDateStr,
+      keyword: keyword ? [keyword] : undefined,
       count,
     });
 
     // レスポンスの返却
     res.status(200).json({
       success: true,
-      count: events.length,
-      events,
+      count: response.count,
+      events: response.events,
     });
     return;
   } catch (error) {

@@ -8,7 +8,7 @@ import {
   sendEventReminders,
 } from "../services/lineService";
 
-import { recommendEventsForUser } from "../utils/recommendEvents";
+import { recommendEventsByHyDE } from "../utils/recommendEvents";
 import { getUserByLineId } from "../utils/userUtils";
 
 /**
@@ -86,7 +86,7 @@ export const sendEventRecommend: RequestHandler = async (
 
     try {
       // レコメンドイベントIDリストを取得
-      const eventIds = await recommendEventsForUser(userId);
+      const eventIds = await recommendEventsByHyDE(userId);
 
       // イベントカルーセルを送信
       const result = await sendEventCarouselToUser(userId, eventIds);

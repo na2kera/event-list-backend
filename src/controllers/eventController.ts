@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { RequestHandler } from "express";
 import prisma from "../config/prisma";
 import { Prisma } from "@prisma/client";
-import { recommendEventsForUser } from "../utils/recommendEvents";
+import { recommendEventsByHyDE } from "../utils/recommendEvents";
 
 export const getEvents: RequestHandler = async (
   req: Request,
