@@ -61,9 +61,6 @@ export const recommendEventsForUser = async (userId: string) => {
     const combinedEvents = [...filteredEvents, ...connpassEvents];
     console.log(`合計イベント数: ${combinedEvents.length}`);
 
-    // 結合されたイベントのIDリストを作成
-    const combinedEventIds = combinedEvents.map((event) => event.id);
-
     // ユーザーオブジェクトを作成して渡す
     const recommendedEventIds = await hydeEventsForUser(
       {
@@ -73,7 +70,7 @@ export const recommendEventsForUser = async (userId: string) => {
         level: user.level,
         goal: user.goal,
       },
-      combinedEventIds // 結合されたイベントIDのリストを渡す
+      combinedEvents // 結合されたイベントオブジェクトのリストを渡す
     );
 
     return recommendedEventIds;

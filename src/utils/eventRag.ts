@@ -2,8 +2,6 @@ import { ChatOpenAI } from "@langchain/openai";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { Document } from "langchain/document";
-import fs from "fs";
-import path from "path";
 import {
   RunnableSequence,
   RunnablePassthrough,
@@ -18,234 +16,127 @@ import { z } from "zod";
 import { getAllEvents } from "./eventUtils";
 import prisma from "../config/prisma";
 
-// モックイベントデータを読み込む
-// ファイルが存在しない場合は空配列を使用
-let mockEvents: any[] = [];
-
-try {
-  const mockEventsPath = path.join(__dirname, "../data/mockEvents.json");
-  if (fs.existsSync(mockEventsPath)) {
-    mockEvents = JSON.parse(fs.readFileSync(mockEventsPath, "utf8"));
-  } else {
-    console.warn(
-      "mockEvents.jsonファイルが見つかりません。空配列を使用します。"
-    );
-  }
-} catch (error) {
-  console.error("mockEvents.jsonの読み込みに失敗しました:", error);
-}
-
-// イベントをドキュメント形式に変換
-const eventDocuments = mockEvents.map((event: any) => {
-  return new Document({
-    pageContent: `${event.title}\n${event.description}`,
-    metadata: {
-      id: event.id,
-      title: event.title,
-      eventDate: event.eventDate,
-      location: event.location,
-      format: event.format,
-      difficulty: event.difficulty,
-      categories: event.categories.join(", "),
-      skills: event.skills.join(", "),
-    },
-  });
-});
-
-// LLMの初期化
-const llm = new ChatOpenAI({
-  modelName: "gpt-3.5-turbo",
-  temperature: 0.3,
-});
-
 // 埋め込みモデルの初期化
 const embeddings = new OpenAIEmbeddings();
 
-// ベクトルストアの初期化と文書の追加
-let vectorStore: MemoryVectorStore;
-
 /**
  * ベクトルストアを初期化する関数
- * @param eventIds 特定のイベントIDのリスト（指定がない場合はすべてのイベントを対象）
+ * @param events ベクトルストアに格納するイベントのリスト
  * @returns 初期化されたベクトルストア
  */
 const initVectorStore = async (
-  eventIds?: string[]
+  events?: Array<{
+    id: string;
+    title: string;
+    venue?: string | null;
+    address?: string | null;
+    eventDate?: Date | string | null;
+    description?: string | null;
+    detailUrl?: string | null;
+    [key: string]: any; // その他のプロパティを許容
+  }>
 ): Promise<MemoryVectorStore> => {
-  // eventDocumentsが空の場合は、Prismaから直接イベントを取得
-  if (eventDocuments.length === 0) {
-    console.log("モックデータが空のため、Prismaからイベントを取得します");
-    try {
-      // イベントIDが指定されている場合は、それらのイベントのみを取得
-      let dbEvents;
-      if (eventIds && eventIds.length > 0) {
-        dbEvents = await prisma.event.findMany({
-          where: {
-            id: {
-              in: eventIds,
-            },
-          },
-          include: {
-            Organization: true,
-            EventCategory: {
-              include: {
-                Category: true,
-              },
-            },
-            EventSkill: true,
-            EventSpeaker: {
-              include: {
-                Speaker: true,
-              },
-            },
-            EventGoal: true,
-          },
-        });
-        console.log(
-          `指定された${eventIds.length}件のイベントIDから${dbEvents.length}件のイベントを取得しました`
-        );
-      } else {
-        // 指定がない場合は全イベントを取得
-        dbEvents = await getAllEvents();
-        console.log(`全イベントを取得しました（${dbEvents.length}件）`);
-      }
+  // 指定されたイベントリストがあれば、それを使用
+  if (events && events.length > 0) {
+    console.log(
+      `指定された${events.length}件のイベントでベクトルストアを初期化します`
+    );
 
-      const docs = dbEvents.map((event) => {
-        // カテゴリとスキルを安全に取得
-        let categories = "";
-        let skills = "";
-        let speakers = "";
-        let goals = "";
+    // イベントからドキュメントを生成
+    const docs = events.map((event) => {
+      // 必要なフィールドを安全に取得
+      const venue = event.venue || "";
+      const address = event.address || "";
+      const location = venue + (address ? ` (${address})` : "");
+      const eventDate = event.eventDate
+        ? typeof event.eventDate === "string"
+          ? event.eventDate
+          : new Date(event.eventDate).toISOString().split("T")[0]
+        : "";
+      const detailUrl = event.detailUrl || "";
 
-        try {
-          // 安全にデータを取得
-          if (event.EventCategory && Array.isArray(event.EventCategory)) {
-            categories = event.EventCategory.map((ec) => {
-              if (
-                ec &&
-                typeof ec === "object" &&
-                "Category" in ec &&
-                ec.Category &&
-                typeof ec.Category === "object" &&
-                "name" in ec.Category
-              ) {
-                return ec.Category.name;
-              }
-              return "";
-            })
-              .filter(Boolean)
-              .join(", ");
-          }
-
-          if (event.EventSkill && Array.isArray(event.EventSkill)) {
-            skills = event.EventSkill.map((skill) =>
-              skill && typeof skill === "object" && "name" in skill
-                ? skill.name
-                : ""
-            )
-              .filter(Boolean)
-              .join(", ");
-          }
-
-          if (event.EventSpeaker && Array.isArray(event.EventSpeaker)) {
-            speakers = event.EventSpeaker.map((es) => {
-              if (
-                es &&
-                typeof es === "object" &&
-                "Speaker" in es &&
-                es.Speaker &&
-                typeof es.Speaker === "object" &&
-                "name" in es.Speaker
-              ) {
-                return es.Speaker.name;
-              }
-              return "";
-            })
-              .filter(Boolean)
-              .join(", ");
-          }
-
-          if (event.EventGoal && Array.isArray(event.EventGoal)) {
-            goals = event.EventGoal.map((goal) =>
-              goal && typeof goal === "object" && "goalType" in goal
-                ? goal.goalType
-                : ""
-            )
-              .filter(Boolean)
-              .join(", ");
-          }
-        } catch (error) {
-          console.error("イベントデータのフォーマットエラー:", error);
-        }
-
-        // イベントタイプを日本語に変換
-        const eventTypeJa =
-          {
-            WORKSHOP: "ワークショップ",
-            HACKATHON: "ハッカソン",
-            CONTEST: "コンテスト",
-            LIGHTNING_TALK: "ライトニングトーク",
-          }[event.eventType as string] || "イベント";
-
-        // ドキュメントを作成 - レコメンドに必要な最小限の情報のみを含める
-        const venue = event.venue || '';
-        const address = event.address || '';
-        const location = venue + (address ? ` (${address})` : '');
-        const eventDate = event.eventDate ? new Date(event.eventDate).toISOString().split('T')[0] : '';
-        const detailUrl = event.detailUrl || '';
-        
-        return new Document({
-          pageContent: `${event.title}\n開催地: ${location}\n開催日: ${eventDate}\n詳細URL: ${detailUrl}\n${
-            event.description || ""
-          }`,
-          metadata: {
-            id: event.id,
-            title: event.title,
-            location: location,
-            eventDate: eventDate,
-            detailUrl: detailUrl,
-            description: event.description || "",
-          },
-        });
+      // ドキュメントを作成
+      return new Document({
+        pageContent: `タイトル: ${event.title}
+開催地: ${location}
+開催日: ${eventDate}
+詳細URL: ${detailUrl}
+概要: ${event.description || ""}`,
+        metadata: {
+          id: event.id,
+          title: event.title,
+          location: location,
+          eventDate: eventDate,
+          detailUrl: detailUrl,
+        },
       });
+    });
 
-      const tempVectorStore = await MemoryVectorStore.fromDocuments(
-        docs,
-        embeddings
-      );
-      console.log(
-        `Prismaから${docs.length}件のイベントでベクトルストアを初期化しました`
-      );
-
-      // グローバル変数も更新
-      vectorStore = tempVectorStore;
-      return tempVectorStore;
-    } catch (error) {
-      console.error("Prismaからのイベント取得に失敗しました:", error);
-      // 空のベクトルストアを作成
-      const emptyVectorStore = await MemoryVectorStore.fromDocuments(
-        [],
-        embeddings
-      );
-      console.warn("空のベクトルストアを初期化しました");
-
-      // グローバル変数も更新
-      vectorStore = emptyVectorStore;
-      return emptyVectorStore;
+    // ドキュメントがない場合は空のベクトルストアを返す
+    if (docs.length === 0) {
+      console.log("ドキュメントがありません。空のベクトルストアを返します。");
+      return new MemoryVectorStore(embeddings);
     }
-  } else {
-    // モックデータがある場合は通常通り初期化
-    const mockVectorStore = await MemoryVectorStore.fromDocuments(
-      eventDocuments,
+
+    // ベクトルストアの作成
+    console.log(`${docs.length}件のドキュメントからベクトルストアを作成します`);
+    return await MemoryVectorStore.fromDocuments(docs, embeddings);
+  }
+
+  // イベントが指定されていない場合は、DBから全イベントを取得
+  try {
+    console.log("イベントが指定されていないため、DBから全イベントを取得します");
+    const dbEvents = await getAllEvents();
+    console.log(`DBから${dbEvents.length}件のイベントを取得しました`);
+
+    // DBから取得したイベントからドキュメントを生成
+    const docs = dbEvents.map((event) => {
+      // 必要なフィールドを安全に取得
+      const venue = event.venue || "";
+      const address = event.address || "";
+      const location = venue + (address ? ` (${address})` : "");
+      const eventDate = event.eventDate
+        ? new Date(event.eventDate).toISOString().split("T")[0]
+        : "";
+      const detailUrl = event.detailUrl || "";
+
+      return new Document({
+        pageContent: `タイトル: ${event.title}
+開催地: ${location}
+開催日: ${eventDate}
+詳細URL: ${detailUrl}
+概要: ${event.description || ""}`,
+        metadata: {
+          id: event.id,
+          title: event.title,
+          location: location,
+          eventDate: eventDate,
+          detailUrl: detailUrl,
+        },
+      });
+    });
+
+    const tempVectorStore = await MemoryVectorStore.fromDocuments(
+      docs,
       embeddings
     );
     console.log(
-      `${eventDocuments.length}件のモックイベントでベクトルストアを初期化しました`
+      `Prismaから${docs.length}件のイベントでベクトルストアを初期化しました`
     );
 
-    // グローバル変数も更新
-    vectorStore = mockVectorStore;
-    return mockVectorStore;
+    // ベクトルストアを返す
+    return tempVectorStore;
+  } catch (error) {
+    console.error("Prismaからのイベント取得に失敗しました:", error);
+    // 空のベクトルストアを作成
+    const emptyVectorStore = await MemoryVectorStore.fromDocuments(
+      [],
+      embeddings
+    );
+    console.warn("空のベクトルストアを初期化しました");
+
+    // 空のベクトルストアを返す
+    return emptyVectorStore;
   }
 };
 
@@ -305,7 +196,16 @@ export const hydeEventsForUser = async (
     level?: string | null;
     goal?: string[] | null;
   },
-  eventIds?: string[]
+  events?: Array<{
+    id: string;
+    title: string;
+    venue?: string | null;
+    address?: string | null;
+    eventDate?: Date | string | null;
+    description?: string | null;
+    detailUrl?: string | null;
+    [key: string]: any; // その他のプロパティを許容
+  }>
 ): Promise<string[]> => {
   // ユーザー情報
   const userInfo = {
@@ -316,9 +216,9 @@ export const hydeEventsForUser = async (
     goals: Array.isArray(user.goal) ? user.goal.join(", ") : "",
   };
 
-  // 特定のイベントIDリストに基づいてベクトルストアを初期化
-  console.log(`イベントID指定: ${eventIds ? `${eventIds.length}件` : "なし"}`);
-  const tempVectorStore = await initVectorStore(eventIds);
+  // イベントリストに基づいてベクトルストアを初期化
+  console.log(`イベント指定: ${events ? `${events.length}件` : "なし"}`);
+  const tempVectorStore = await initVectorStore(events);
 
   // LLMの初期化
   const llm = new ChatOpenAI({
