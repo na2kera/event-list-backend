@@ -64,12 +64,52 @@ const embeddings = new OpenAIEmbeddings();
 // ベクトルストアの初期化と文書の追加
 let vectorStore: MemoryVectorStore;
 
-const initVectorStore = async () => {
+/**
+ * ベクトルストアを初期化する関数
+ * @param eventIds 特定のイベントIDのリスト（指定がない場合はすべてのイベントを対象）
+ * @returns 初期化されたベクトルストア
+ */
+const initVectorStore = async (
+  eventIds?: string[]
+): Promise<MemoryVectorStore> => {
   // eventDocumentsが空の場合は、Prismaから直接イベントを取得
   if (eventDocuments.length === 0) {
     console.log("モックデータが空のため、Prismaからイベントを取得します");
     try {
-      const dbEvents = await getAllEvents();
+      // イベントIDが指定されている場合は、それらのイベントのみを取得
+      let dbEvents;
+      if (eventIds && eventIds.length > 0) {
+        dbEvents = await prisma.event.findMany({
+          where: {
+            id: {
+              in: eventIds,
+            },
+          },
+          include: {
+            Organization: true,
+            EventCategory: {
+              include: {
+                Category: true,
+              },
+            },
+            EventSkill: true,
+            EventSpeaker: {
+              include: {
+                Speaker: true,
+              },
+            },
+            EventGoal: true,
+          },
+        });
+        console.log(
+          `指定された${eventIds.length}件のイベントIDから${dbEvents.length}件のイベントを取得しました`
+        );
+      } else {
+        // 指定がない場合は全イベントを取得
+        dbEvents = await getAllEvents();
+        console.log(`全イベントを取得しました（${dbEvents.length}件）`);
+      }
+
       const docs = dbEvents.map((event) => {
         // カテゴリとスキルを安全に取得
         let categories = "";
@@ -106,44 +146,106 @@ const initVectorStore = async () => {
               .filter(Boolean)
               .join(", ");
           }
+
+          if (event.EventSpeaker && Array.isArray(event.EventSpeaker)) {
+            speakers = event.EventSpeaker.map((es) => {
+              if (
+                es &&
+                typeof es === "object" &&
+                "Speaker" in es &&
+                es.Speaker &&
+                typeof es.Speaker === "object" &&
+                "name" in es.Speaker
+              ) {
+                return es.Speaker.name;
+              }
+              return "";
+            })
+              .filter(Boolean)
+              .join(", ");
+          }
+
+          if (event.EventGoal && Array.isArray(event.EventGoal)) {
+            goals = event.EventGoal.map((goal) =>
+              goal && typeof goal === "object" && "goalType" in goal
+                ? goal.goalType
+                : ""
+            )
+              .filter(Boolean)
+              .join(", ");
+          }
         } catch (error) {
           console.error("イベントデータのフォーマットエラー:", error);
         }
 
+        // イベントタイプを日本語に変換
+        const eventTypeJa =
+          {
+            WORKSHOP: "ワークショップ",
+            HACKATHON: "ハッカソン",
+            CONTEST: "コンテスト",
+            LIGHTNING_TALK: "ライトニングトーク",
+          }[event.eventType as string] || "イベント";
+
+        // ドキュメントを作成 - レコメンドに必要な最小限の情報のみを含める
+        const venue = event.venue || '';
+        const address = event.address || '';
+        const location = venue + (address ? ` (${address})` : '');
+        const eventDate = event.eventDate ? new Date(event.eventDate).toISOString().split('T')[0] : '';
+        const detailUrl = event.detailUrl || '';
+        
         return new Document({
-          pageContent: `${event.title}\n${event.description || ""}`,
+          pageContent: `${event.title}\n開催地: ${location}\n開催日: ${eventDate}\n詳細URL: ${detailUrl}\n${
+            event.description || ""
+          }`,
           metadata: {
             id: event.id,
             title: event.title,
-            eventDate: event.eventDate,
-            location: event.location || "",
-            format: event.format,
-            difficulty: event.difficulty,
-            categories: categories,
-            skills: skills,
+            location: location,
+            eventDate: eventDate,
+            detailUrl: detailUrl,
+            description: event.description || "",
           },
         });
       });
 
-      vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
+      const tempVectorStore = await MemoryVectorStore.fromDocuments(
+        docs,
+        embeddings
+      );
       console.log(
         `Prismaから${docs.length}件のイベントでベクトルストアを初期化しました`
       );
+
+      // グローバル変数も更新
+      vectorStore = tempVectorStore;
+      return tempVectorStore;
     } catch (error) {
       console.error("Prismaからのイベント取得に失敗しました:", error);
       // 空のベクトルストアを作成
-      vectorStore = await MemoryVectorStore.fromDocuments([], embeddings);
+      const emptyVectorStore = await MemoryVectorStore.fromDocuments(
+        [],
+        embeddings
+      );
       console.warn("空のベクトルストアを初期化しました");
+
+      // グローバル変数も更新
+      vectorStore = emptyVectorStore;
+      return emptyVectorStore;
     }
   } else {
     // モックデータがある場合は通常通り初期化
-    vectorStore = await MemoryVectorStore.fromDocuments(
+    const mockVectorStore = await MemoryVectorStore.fromDocuments(
       eventDocuments,
       embeddings
     );
     console.log(
       `${eventDocuments.length}件のモックイベントでベクトルストアを初期化しました`
     );
+
+    // グローバル変数も更新
+    vectorStore = mockVectorStore;
+    return mockVectorStore;
   }
 };
 
@@ -166,7 +268,6 @@ const hydePrompt = PromptTemplate.fromTemplate(`
   
   - イベントID: 一意の識別子（例: 123）
   - タイトル: イベントの名前（例: 「Next.js実践ワークショップ」）
-  - カテゴリ: 技術カテゴリやトピック（例: Web開発、AI、機械学習）
   - 開催地: 市区町村やオンライン（例: 東京、札幌、オンライン）
   - 開催日: 日付形式（例: 2025-05-10）
   - 概要: イベントの内容説明（例: 「Next.jsの実践的な使い方を学ぶハンズオンイベントです。」）
@@ -197,25 +298,33 @@ const eventRecommendationSchema = z.object({
 
 // ユーザー情報に基づいてイベントをランク付けするRAGチェーン
 export const hydeEventsForUser = async (
-  place: string | null,
-  stack: string[] | null,
-  tag: string[] | null,
-  level: string | null,
-  goals: string[] | null
-) => {
-  // ベクトルストアが初期化されていない場合は初期化
-  if (!vectorStore) {
-    await initVectorStore();
-  }
-
+  user: {
+    place?: string | null;
+    stack?: string[] | null;
+    tag?: string[] | null;
+    level?: string | null;
+    goal?: string[] | null;
+  },
+  eventIds?: string[]
+): Promise<string[]> => {
   // ユーザー情報
   const userInfo = {
-    location: place,
-    skills: stack || [],
-    interests: tag || [],
-    skillLevel: level,
-    goals: goals || [],
+    location: user.place || "",
+    skills: Array.isArray(user.stack) ? user.stack.join(", ") : "",
+    interests: Array.isArray(user.tag) ? user.tag.join(", ") : "",
+    skillLevel: user.level || "",
+    goals: Array.isArray(user.goal) ? user.goal.join(", ") : "",
   };
+
+  // 特定のイベントIDリストに基づいてベクトルストアを初期化
+  console.log(`イベントID指定: ${eventIds ? `${eventIds.length}件` : "なし"}`);
+  const tempVectorStore = await initVectorStore(eventIds);
+
+  // LLMの初期化
+  const llm = new ChatOpenAI({
+    modelName: "gpt-3.5-turbo",
+    temperature: 0.7,
+  });
 
   // HyDEチェーン: ユーザー情報からクエリを生成
   const hydeChain = RunnableSequence.from([
@@ -224,134 +333,40 @@ export const hydeEventsForUser = async (
     new StringOutputParser(),
   ]);
 
-  // 検索チェーン: DBからすべてのイベントを取得し、HyDEクエリで最近傍探索
+  // 検索チェーン: HyDEクエリで最近傍探索
   const retrievalChain = async (query: string) => {
-    // DBからすべてのイベントを取得
+    try {
+      // 類似度スコア付きで検索結果を取得
+      const resultsWithScores = await tempVectorStore.similaritySearchWithScore(
+        query,
+        50
+      );
 
-    const allEvents = await getAllEvents();
-    console.log(`DBから取得したイベント数: ${allEvents.length}`);
+      // 厳格な類似度しきい値を設定
+      const SIMILARITY_THRESHOLD = 0.7;
 
-    // イベントをドキュメント形式に変換
-    const eventDocs = allEvents.map((event) => {
-      // カテゴリとスキルを安全に取得
-      let categories = "";
-      let skills = "";
-      let speakers = "";
-      let goals = "";
-
-      try {
-        // 安全にデータを取得
-        if (event.EventCategory && Array.isArray(event.EventCategory)) {
-          categories = event.EventCategory.map((ec) => {
-            if (
-              ec &&
-              typeof ec === "object" &&
-              "Category" in ec &&
-              ec.Category &&
-              typeof ec.Category === "object" &&
-              "name" in ec.Category
-            ) {
-              return ec.Category.name;
-            }
-            return "";
-          })
-            .filter(Boolean)
-            .join(", ");
-        }
-
-        if (event.EventSkill && Array.isArray(event.EventSkill)) {
-          skills = event.EventSkill.map((skill) =>
-            skill && typeof skill === "object" && "name" in skill
-              ? skill.name
-              : ""
-          )
-            .filter(Boolean)
-            .join(", ");
-        }
-
-        if (event.EventSpeaker && Array.isArray(event.EventSpeaker)) {
-          speakers = event.EventSpeaker.map((es) => {
-            if (
-              es &&
-              typeof es === "object" &&
-              "Speaker" in es &&
-              es.Speaker &&
-              typeof es.Speaker === "object" &&
-              "name" in es.Speaker
-            ) {
-              return es.Speaker.name;
-            }
-            return "";
-          })
-            .filter(Boolean)
-            .join(", ");
-        }
-
-        if (event.EventGoal && Array.isArray(event.EventGoal)) {
-          goals = event.EventGoal.map((goal) =>
-            goal && typeof goal === "object" && "goalType" in goal
-              ? goal.goalType
-              : ""
-          )
-            .filter(Boolean)
-            .join(", ");
-        }
-      } catch (error) {
-        console.error("イベントデータのフォーマットエラー:", error);
-      }
-
-      // ドキュメントを作成
-      return new Document({
-        pageContent: `${event.title}\n${event.description || ""}`,
-        metadata: {
-          id: event.id,
-          title: event.title,
-          eventDate: event.eventDate,
-          location: event.location || "",
-          format: event.format,
-          difficulty: event.difficulty,
-          categories: categories,
-          skills: skills,
-          speakers: speakers,
-          goals: goals,
-        },
+      // しきい値を超える結果のみをフィルタリング
+      const filteredResults = resultsWithScores.filter(([doc, score]) => {
+        return score >= SIMILARITY_THRESHOLD;
       });
-    });
 
-    // クエリを使って最近傍探索
-    // 一時的なベクトルストアを作成
-    const tempVectorStore = await MemoryVectorStore.fromDocuments(
-      eventDocs,
-      embeddings
-    );
+      console.log(
+        `検索結果: 合計${resultsWithScores.length}件、しきい値(${SIMILARITY_THRESHOLD})以上: ${filteredResults.length}件`
+      );
 
-    // 類似度スコア付きで検索結果を取得（withScoreは類似度スコアを含める）
-    const resultsWithScores = await tempVectorStore.similaritySearchWithScore(
-      query,
-      50
-    );
+      // 結果からイベントIDのリストだけを返す
+      const resultEventIds = filteredResults.map(([doc, score]) => {
+        console.log(
+          `イベント「${doc.metadata.title}」の類似度スコア: ${score}`
+        );
+        return doc.metadata.id;
+      });
 
-    // 厳格な類似度しきい値を設定（0.7は高い類似度を意味する、値が大きいほど類似）
-    // 注: スコアの形式によっては調整が必要（コサイン類似度の場合は0.7など、ユークリッド距離の場合は小さい値が良い）
-    const SIMILARITY_THRESHOLD = 0.7;
-
-    // しきい値を超える結果のみをフィルタリング
-    const filteredResults = resultsWithScores.filter(([doc, score]) => {
-      // スコアがしきい値以上のものだけを残す（コサイン類似度の場合）
-      return score >= SIMILARITY_THRESHOLD;
-    });
-
-    console.log(
-      `検索結果: 合計${resultsWithScores.length}件、しきい値(${SIMILARITY_THRESHOLD})以上: ${filteredResults.length}件`
-    );
-
-    // 結果からイベントIDのリストだけを返す
-    const eventIds = filteredResults.map(([doc, score]) => {
-      console.log(`イベント「${doc.metadata.title}」の類似度スコア: ${score}`);
-      return doc.metadata.id;
-    });
-
-    return eventIds;
+      return resultEventIds;
+    } catch (error) {
+      console.error("検索処理中にエラーが発生しました:", error);
+      return [];
+    }
   };
 
   // 全体のRAG処理 - HyDEクエリ生成と最近傍探索のみを使用
@@ -360,36 +375,14 @@ export const hydeEventsForUser = async (
     const hydeQuery = await hydeChain.invoke(input);
     console.log("生成されたHyDEクエリ:", hydeQuery);
 
-    // クエリを使って最近傍探索を実行し、イベントIDのリストを取得
-    const eventIds = await retrievalChain(hydeQuery);
-    console.log("ランキングされたイベントID:", eventIds);
+    // 生成されたクエリを使って最近傍探索を実行
+    const resultEventIds = await retrievalChain(hydeQuery);
+    console.log("ランキングされたイベントID:", resultEventIds);
 
     // イベントIDのリストをそのまま返す
-    return eventIds;
+    return resultEventIds.slice(0, 10); // 上位10件を返す
   };
 
-  // ユーザークエリを処理
-  try {
-    // ユーザー情報からイベントIDのリストを取得
-    const eventIds = await processUserQuery(userInfo);
-
-    // 結果が空の場合は空配列を返す
-    if (!eventIds || eventIds.length === 0) {
-      console.log("適合するイベントが見つかりませんでした");
-      return [];
-    }
-
-    // 上位のイベントIDを取得
-    console.log(`選択されたイベント数: ${eventIds.length}`);
-    if (eventIds.length > 0) {
-      console.log("最も関連性の高いイベントID:", eventIds[0]);
-    }
-
-    // 最大10件までに制限
-    const limitedEventIds = eventIds.slice(0, 10);
-    return limitedEventIds;
-  } catch (error) {
-    console.error("RAGチェーン実行エラー:", error);
-    throw error;
-  }
+  // ユーザー情報に基づいてイベントを推薦
+  return processUserQuery(userInfo);
 };
