@@ -221,3 +221,100 @@ export const fetchAndConvertConnpassEvents = async (
     return [];
   }
 };
+
+/**
+ * キーワードを直接指定してConnpassAPIでイベントを検索する関数
+ * @param keywords 検索キーワード（AND条件）
+ * @param keywordsOr 検索キーワード（OR条件）
+ * @param place 場所/都道府県
+ * @param fromDate 検索開始日（YYYYMMDD形式、デフォルト：今日）
+ * @param toDate 検索終了日（YYYYMMDD形式、デフォルト：14日後）
+ * @returns 変換されたPrismaのEvent型の配列
+ */
+export const fetchConnpassEventsByKeywords = async (
+  keywords: string[],
+  keywordsOr: string[] = [],
+  place?: string | null,
+  fromDate?: string,
+  toDate?: string
+): Promise<Event[]> => {
+  try {
+    // 日付範囲の設定（デフォルト：今日から14日後まで）
+    const today = new Date();
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + 14);
+
+    // 日付をYYYYMMDD形式に変換
+    const formatDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}${month}${day}`;
+    };
+
+    const ymd = fromDate || formatDate(today);
+    const ymdEnd = toDate || formatDate(endDate);
+
+    // ConnpassAPI検索パラメータの設定
+    const params: ConnpassSearchParamsV2 = {
+      api_key: process.env.CONNPASS_API_KEY || "",
+      order: 2, // 開催日時順
+      ymd: ymd,
+      ymd_end: ymdEnd,
+      count: 100, // 最大取得件数
+    };
+
+    // キーワードの設定
+    if (keywords.length > 0) {
+      params.keyword = keywords;
+    }
+
+    if (keywordsOr.length > 0) {
+      params.keyword_or = keywordsOr;
+    }
+
+    // 居住地が設定されている場合は、その地域のイベントをフィルタリング
+    if (place) {
+      let prefecture = place
+        ? place.split("都")[0].split("道")[0].split("府")[0].split("県")[0]
+        : "";
+
+      // 都道府県名を英語表記に変換
+      let prefectureCode = "";
+      if (prefecture.includes("東京")) {
+        prefectureCode = "tokyo";
+      } else if (prefecture.includes("大阪")) {
+        prefectureCode = "osaka";
+      } else if (prefecture.includes("京都")) {
+        prefectureCode = "kyoto";
+      } else if (prefecture.includes("兵庫")) {
+        prefectureCode = "hyogo";
+      } else if (prefecture.includes("福岡")) {
+        prefectureCode = "fukuoka";
+      } else if (prefecture.includes("北海道")) {
+        prefectureCode = "hokkaido";
+      } else if (prefecture.includes("愛知")) {
+        prefectureCode = "aichi";
+      } else if (prefecture.includes("神奈川")) {
+        prefectureCode = "kanagawa";
+      }
+
+      if (prefectureCode) {
+        params.prefectures = prefectureCode;
+      }
+    }
+
+    console.log("ConnpassAPIにリクエストを送信します...");
+    const apiResponse = await fetchConnpassEventsV2(params);
+    console.log(
+      `Connpass API: ${apiResponse.events.length}件取得（全${apiResponse.total}件中）`
+    );
+
+    // 取得したイベントをPrismaのEvent型に変換
+    const events = apiResponse.events.map(convertConnpassEventToPrismaEvent);
+    return events;
+  } catch (error) {
+    console.error("Connpassイベント取得エラー:", error);
+    return [];
+  }
+};
