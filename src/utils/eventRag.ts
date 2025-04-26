@@ -55,13 +55,11 @@ const initVectorStore = async (
         : "";
       const detailUrl = event.detailUrl || "";
 
-      // ドキュメントを作成
+      // ドキュメントを作成（タイトル、詳細URL、概要のみをベクトル化）
       return new Document({
         pageContent: `タイトル: ${event.title}
-開催地: ${location}
-開催日: ${eventDate}
-詳細URL: ${detailUrl}
-概要: ${event.description || ""}`,
+            詳細URL: ${detailUrl}
+            概要: ${event.description || ""}`,
         metadata: {
           id: event.id,
           title: event.title,
@@ -147,11 +145,9 @@ const hydePrompt = PromptTemplate.fromTemplate(`
   ---
   【ユーザー情報】
   - 居住地: {location}
-  - 技術スタック: {skills}
   - 興味のあるトピック: {interests}
   - 技術レベル: {skillLevel}
   - 目標: {goals}
-  
   
   ---
   【イベントDBの形式】
@@ -165,14 +161,23 @@ const hydePrompt = PromptTemplate.fromTemplate(`
   
   ---
   【出力形式】
-  このユーザーが興味を持ちそうなイベントの「説明文」を生成してください。
-  これは検索クエリとして使われるため、検索エンジンが関連イベントを見つけやすいように、**具体的で詳細に**書いてください。
+  このユーザーが興味を持ちそうなイベントを探すための検索クエリを2つ以上生成してください。各クエリはユーザーの異なる興味や目標に対応するものにしてください。
   
-  例：
-  - 「東京で開催される、ReactやNext.jsを扱うフロントエンド開発者向けのハンズオンイベント」
-  - 「Pythonを用いた機械学習の実践的なワークショップ。生成AIや画像認識に興味がある人に最適」
+  各クエリは短くシンプルにし、以下の要素の一部のみを含めてください（全てを含める必要はありません）：
+  1. ユーザーの居住地に近い開催地（オンラインも含む）
+  2. ユーザーのレベルに合った難易度
+  3. ユーザーのゴールに関連するメリット
+  4. ユーザーの興味に関連するトピック
   
-  技術的な専門用語や、ユーザーのスキルに沿ったキーワードを盛り込みましょう。
+  各クエリは新しい行で区切り、各行は「- 」で始めてください。例えば：
+  
+  - 東京で開催されるフロントエンド開発のワークショップ
+  - オンラインで参加可能なAI開発入門講座
+  - 中級者向けデータサイエンス勉強会
+  - ネットワーキングとキャリアアップのためのイベント
+  - 機械学習初心者向けハンズオン
+  
+  各クエリはシンプルで短く、要素が多すぎないようにしてください。合計で5つ程度のクエリを生成してください。
   `);
 
 // 結果のスキーマ定義
@@ -207,14 +212,32 @@ export const hydeEventsForUser = async (
     [key: string]: any; // その他のプロパティを許容
   }>
 ): Promise<string[]> => {
-  // ユーザー情報
-  const userInfo = {
-    location: user.place || "",
-    skills: Array.isArray(user.stack) ? user.stack.join(", ") : "",
-    interests: Array.isArray(user.tag) ? user.tag.join(", ") : "",
-    skillLevel: user.level || "",
-    goals: Array.isArray(user.goal) ? user.goal.join(", ") : "",
+  // ユーザー情報を整理
+  const place = user.place || "";
+  const stack = Array.isArray(user.stack) ? user.stack : [];
+  const tags = Array.isArray(user.tag) ? user.tag : [];
+  const level = user.level || "";
+  const goals = Array.isArray(user.goal) ? user.goal : [];
+
+  // ユーザー情報の型定義
+  type UserInfoType = {
+    location: string;
+    interests: string;
+    skillLevel: string;
+    goals: string;
   };
+
+  // 単一のユーザー情報セットを作成
+  // 技術スタックは除外し、興味タグとゴールの情報のみを使用
+  const userInfoSets: UserInfoType[] = [];
+
+  // 単一のセットを作成
+  userInfoSets.push({
+    location: place,
+    interests: tags.join(", "),
+    skillLevel: level,
+    goals: goals.join(", "),
+  });
 
   // イベントリストに基づいてベクトルストアを初期化
   console.log(`イベント指定: ${events ? `${events.length}件` : "なし"}`);
@@ -242,8 +265,8 @@ export const hydeEventsForUser = async (
         50
       );
 
-      // 厳格な類似度しきい値を設定
-      const SIMILARITY_THRESHOLD = 0.7;
+      // 類似度しきい値を設定（適切な値に設定）
+      const SIMILARITY_THRESHOLD = 0.85;
 
       // しきい値を超える結果のみをフィルタリング
       const filteredResults = resultsWithScores.filter(([doc, score]) => {
@@ -254,8 +277,28 @@ export const hydeEventsForUser = async (
         `検索結果: 合計${resultsWithScores.length}件、しきい値(${SIMILARITY_THRESHOLD})以上: ${filteredResults.length}件`
       );
 
+      // 地域によるフィルタリング
+      const userPlace = user.place || "";
+      const filteredByLocation = filteredResults.filter(([doc, score]) => {
+        const eventLocation = doc.metadata.location || "";
+
+        // ユーザーの居住地に近いか、オンラインイベントのみを残す
+        return (
+          !userPlace ||
+          eventLocation.includes(userPlace) ||
+          eventLocation.toLowerCase().includes("オンライン") ||
+          eventLocation.toLowerCase().includes("online") ||
+          eventLocation.toLowerCase().includes("zoom") ||
+          eventLocation.toLowerCase().includes("teams")
+        );
+      });
+
+      console.log(
+        `地域フィルタリング後: ${filteredByLocation.length}件のイベントが残りました`
+      );
+
       // 結果からイベントIDのリストだけを返す
-      const resultEventIds = filteredResults.map(([doc, score]) => {
+      const resultEventIds = filteredByLocation.map(([doc, score]) => {
         console.log(
           `イベント「${doc.metadata.title}」の類似度スコア: ${score}`
         );
@@ -269,20 +312,51 @@ export const hydeEventsForUser = async (
     }
   };
 
-  // 全体のRAG処理 - HyDEクエリ生成と最近傍探索のみを使用
-  const processUserQuery = async (input: typeof userInfo) => {
-    // HyDEクエリを生成
-    const hydeQuery = await hydeChain.invoke(input);
-    console.log("生成されたHyDEクエリ:", hydeQuery);
+  // 全体のRAG処理 - 複数のHYDEクエリ生成と最近傍探索を実行
+  const processUserQueries = async (inputSets: UserInfoType[]) => {
+    const allResultEventIds: string[] = [];
+    const uniqueEventIds = new Set<string>();
 
-    // 生成されたクエリを使って最近傍探索を実行
-    const resultEventIds = await retrievalChain(hydeQuery);
-    console.log("ランキングされたイベントID:", resultEventIds);
+    // 単一のユーザー情報セットから複数のクエリを生成
+    // 入力セットが複数ある場合、最初のセットのみを使用
+    const input = inputSets[0];
 
-    // イベントIDのリストをそのまま返す
-    return resultEventIds.slice(0, 10); // 上位10件を返す
+    // HYDEクエリを生成（複数クエリを一度に生成）
+    const hydeQueryResponse = await hydeChain.invoke(input);
+    console.log("生成されたHYDEクエリレスポンス:", hydeQueryResponse);
+
+    // レスポンスを行ごとに分割し、各行がクエリとなる
+    const queries = hydeQueryResponse
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("- "))
+      .map((line) => line.substring(2).trim())
+      .filter((query) => query.length > 0);
+
+    console.log(`${queries.length}個のクエリを抽出しました:`, queries);
+
+    // 各クエリについて検索を実行
+    for (const query of queries) {
+      console.log(`クエリ「${query}」で検索します...`);
+
+      // 生成されたクエリを使って最近傍探索を実行
+      const resultEventIds = await retrievalChain(query);
+
+      // 結果を結合し、重複を除去
+      for (const id of resultEventIds) {
+        if (!uniqueEventIds.has(id)) {
+          uniqueEventIds.add(id);
+          allResultEventIds.push(id);
+        }
+      }
+    }
+
+    console.log("結合されたイベントID:", allResultEventIds);
+
+    // 上位10件を返す
+    return allResultEventIds.slice(0, 10);
   };
 
-  // ユーザー情報に基づいてイベントを推薦
-  return processUserQuery(userInfo);
+  // 複数のユーザー情報セットに基づいてイベントを推薦
+  return processUserQueries(userInfoSets);
 };

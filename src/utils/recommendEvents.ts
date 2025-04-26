@@ -1,8 +1,11 @@
 import { User, Event } from "@prisma/client";
 import { getUserById } from "./userUtils";
-import { getAllEvents, getFilteredEvents } from "./eventUtils";
+import { getAllEvents, getFilteredEvents, saveOrUpdateEvents } from "./eventUtils";
 import { hydeEventsForUser } from "./eventRag";
-import { fetchAndConvertConnpassEvents, UserProfile } from "./connpassEventUtils";
+import {
+  fetchAndConvertConnpassEvents,
+  UserProfile,
+} from "./connpassEventUtils";
 
 /**
  * ユーザーIDに基づいてイベントをレコメンドする
@@ -11,10 +14,6 @@ import { fetchAndConvertConnpassEvents, UserProfile } from "./connpassEventUtils
  */
 export const recommendEventsForUser = async (userId: string) => {
   try {
-    // まずすべてのイベントを取得
-    const allEvents = await getAllEvents();
-    console.log(`全イベント数: ${allEvents.length}`);
-
     // ユーザーIDからユーザー情報を取得
     const user = await getUserById(userId);
 
@@ -24,10 +23,12 @@ export const recommendEventsForUser = async (userId: string) => {
 
     // ユーザーの居住地と技術スタックに基づいてイベントをフィルタリング
     const filteredEvents = await getFilteredEvents({
-      //   location: mockUser.location,
-      //   skills: mockUser.techStack,
       // 現在以降のイベントのみを取得
       fromDate: new Date(),
+      // ユーザーの居住地に基づいてフィルタリング
+      location: user.place || undefined,
+      // ユーザーの技術スタックに基づいてフィルタリング
+      skills: user.stack || undefined,
     });
 
     console.log(`フィルタリング後のイベント数: ${filteredEvents.length}`);
@@ -46,12 +47,25 @@ export const recommendEventsForUser = async (userId: string) => {
         // ユーザープロファイルを作成
         // ユーザープロファイルを作成（場所情報のみ）
         const userProfile: UserProfile = {
-          place: user.place || undefined
+          place: user.place || undefined,
         };
 
         // Connpass APIからイベントを取得し、変換する
         connpassEvents = await fetchAndConvertConnpassEvents(userProfile, 14);
-        console.log(`Connpass APIから${connpassEvents.length}件のイベントを取得しました`);
+        console.log(
+          `Connpass APIから${connpassEvents.length}件のイベントを取得しました`
+        );
+        
+        // 取得したイベントをDBに保存または更新する
+        if (connpassEvents.length > 0) {
+          try {
+            const savedEvents = await saveOrUpdateEvents(connpassEvents);
+            console.log(`${savedEvents.length}件のイベントをDBに保存しました`);
+          } catch (saveError) {
+            console.error("ConnpassイベントのDB保存中にエラーが発生しました:", saveError);
+            // 保存に失敗してもレコメンド処理は続行する
+          }
+        }
       } catch (error) {
         console.error("Connpass APIからのイベント取得に失敗しました:", error);
       }

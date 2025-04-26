@@ -212,3 +212,72 @@ export const getFilteredEvents = async (options: {
     throw error;
   }
 };
+
+/**
+ * イベントをDBに保存または更新する
+ * @param events 保存または更新するイベントの配列
+ * @returns 保存または更新されたイベントの配列
+ */
+export const saveOrUpdateEvents = async (events: Event[]): Promise<Event[]> => {
+  try {
+    if (!events || events.length === 0) {
+      console.log("保存するイベントがありません");
+      return [];
+    }
+
+    console.log(`${events.length}件のイベントを保存または更新します`);
+
+    // トランザクションを使用して一括処理
+    const savedEvents = await prisma.$transaction(async (tx) => {
+      const results: Event[] = [];
+
+      for (const event of events) {
+        // イベントIDで既存のイベントを検索
+        const existingEvent = await tx.event.findUnique({
+          where: { id: event.id },
+        });
+
+        let savedEvent;
+        if (existingEvent) {
+          // 既存のイベントを更新
+          console.log(`イベント「${event.title}」を更新します`);
+          savedEvent = await tx.event.update({
+            where: { id: event.id },
+            data: {
+              title: event.title,
+              description: event.description,
+              eventDate: event.eventDate,
+              startTime: event.startTime,
+              endTime: event.endTime,
+              venue: event.venue,
+              address: event.address,
+              location: event.location,
+              detailUrl: event.detailUrl,
+              updatedAt: new Date(),
+              format: event.format,
+              difficulty: event.difficulty,
+              price: event.price,
+              eventType: event.eventType,
+            },
+          });
+        } else {
+          // 新規イベントを作成
+          console.log(`新規イベント「${event.title}」を作成します`);
+          savedEvent = await tx.event.create({
+            data: event,
+          });
+        }
+
+        results.push(savedEvent);
+      }
+
+      return results;
+    });
+
+    console.log(`${savedEvents.length}件のイベントを保存または更新しました`);
+    return savedEvents;
+  } catch (error) {
+    console.error("イベント保存エラー:", error);
+    throw error;
+  }
+};

@@ -1,5 +1,9 @@
 import { Event, EventType, EventFormat, DifficultyLevel } from "@prisma/client";
-import { fetchConnpassEventsV2, ConnpassEventV2, ConnpassSearchParamsV2 } from "../services/connpassService";
+import {
+  fetchConnpassEventsV2,
+  ConnpassEventV2,
+  ConnpassSearchParamsV2,
+} from "../services/connpassService";
 
 /**
  * ユーザープロファイル型定義
@@ -7,7 +11,7 @@ import { fetchConnpassEventsV2, ConnpassEventV2, ConnpassSearchParamsV2 } from "
  */
 export interface UserProfile {
   place?: string; // 居住地（都道府県）
-};
+}
 
 /**
  * ConnpassイベントをPrismaのEvent型に変換する関数
@@ -15,51 +19,83 @@ export interface UserProfile {
  * @param connpassEvent Connpass APIから取得したイベント
  * @returns Prisma Event型に変換されたイベント
  */
-export const convertConnpassEventToPrismaEvent = (connpassEvent: ConnpassEventV2): Event => {
+export const convertConnpassEventToPrismaEvent = (
+  connpassEvent: ConnpassEventV2
+): Event => {
   // イベントタイプの判定（タイトルやタグから推測）
   let eventType: EventType = EventType.WORKSHOP; // デフォルト値
   const title = connpassEvent.title.toLowerCase();
-  const description = (connpassEvent.description || '').toLowerCase();
-  const tags = connpassEvent.tags ? connpassEvent.tags.map((tag: string) => tag.toLowerCase()) : [];
-  
+  const description = (connpassEvent.description || "").toLowerCase();
+  const tags = connpassEvent.tags
+    ? connpassEvent.tags.map((tag: string) => tag.toLowerCase())
+    : [];
+
   // タグとタイトルからイベントタイプを判定
-  if (title.includes('ハッカソン') || tags.includes('hackathon') || tags.includes('ハッカソン')) {
+  if (
+    title.includes("ハッカソン") ||
+    tags.includes("hackathon") ||
+    tags.includes("ハッカソン")
+  ) {
     eventType = EventType.HACKATHON;
-  } else if (title.includes('コンテスト') || tags.includes('contest') || tags.includes('コンテスト')) {
+  } else if (
+    title.includes("コンテスト") ||
+    tags.includes("contest") ||
+    tags.includes("コンテスト")
+  ) {
     eventType = EventType.CONTEST;
-  } else if (title.includes('lt') || title.includes('ライトニングトーク') || 
-            tags.includes('lightning_talk') || tags.includes('lt') || 
-            tags.includes('ライトニングトーク')) {
+  } else if (
+    title.includes("lt") ||
+    title.includes("ライトニングトーク") ||
+    tags.includes("lightning_talk") ||
+    tags.includes("lt") ||
+    tags.includes("ライトニングトーク")
+  ) {
     eventType = EventType.LIGHTNING_TALK;
   }
-  
+
   // 開催形式の判定
   let format: EventFormat = EventFormat.OFFLINE; // デフォルト値
-  if (title.includes('オンライン') || description.includes('オンライン') || 
-      tags.includes('online') || tags.includes('オンライン') || 
-      connpassEvent.place?.includes('オンライン') || 
-      connpassEvent.place?.toLowerCase().includes('online')) {
+  if (
+    title.includes("オンライン") ||
+    description.includes("オンライン") ||
+    tags.includes("online") ||
+    tags.includes("オンライン") ||
+    connpassEvent.place?.includes("オンライン") ||
+    connpassEvent.place?.toLowerCase().includes("online")
+  ) {
     format = EventFormat.ONLINE;
-  } else if (title.includes('ハイブリッド') || description.includes('ハイブリッド') || 
-             tags.includes('hybrid') || tags.includes('ハイブリッド')) {
+  } else if (
+    title.includes("ハイブリッド") ||
+    description.includes("ハイブリッド") ||
+    tags.includes("hybrid") ||
+    tags.includes("ハイブリッド")
+  ) {
     format = EventFormat.HYBRID;
   }
-  
+
   // 日付と時間の変換
   const startDate = new Date(connpassEvent.started_at);
-  
+
   // 開催場所の設定
-  const venue = connpassEvent.place || '未定';
+  const venue = connpassEvent.place || "未定";
   const address = connpassEvent.address || null;
-  
+
   // 必要最小限のフィールドのみを設定
   return {
     id: `connpass_${connpassEvent.id}`,
     title: connpassEvent.title,
     description: connpassEvent.description || connpassEvent.catch || "",
     eventDate: startDate,
-    startTime: startDate.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
-    endTime: connpassEvent.ended_at ? new Date(connpassEvent.ended_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null,
+    startTime: startDate.toLocaleTimeString("ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    endTime: connpassEvent.ended_at
+      ? new Date(connpassEvent.ended_at).toLocaleTimeString("ja-JP", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null,
     venue: venue,
     address: address,
     location: null,
@@ -87,8 +123,10 @@ export const fetchAndConvertConnpassEvents = async (
 ): Promise<Event[]> => {
   try {
     // 居住地から都道府県を抽出
-    const place = userProfile.place || '';
-    let prefecture = place ? place.split('都')[0].split('道')[0].split('府')[0].split('県')[0] : '';
+    const place = userProfile.place || "";
+    let prefecture = place
+      ? place.split("都")[0].split("道")[0].split("府")[0].split("県")[0]
+      : "";
 
     // 日付範囲の設定（今日からdays日後まで）
     const today = new Date();
@@ -97,36 +135,89 @@ export const fetchAndConvertConnpassEvents = async (
 
     // 日付をYYYYMMDD形式に変換
     const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
     const ymd = `${year}${month}${day}`;
 
     const yearEnd = endDate.getFullYear();
-    const monthEnd = String(endDate.getMonth() + 1).padStart(2, '0');
-    const dayEnd = String(endDate.getDate()).padStart(2, '0');
+    const monthEnd = String(endDate.getMonth() + 1).padStart(2, "0");
+    const dayEnd = String(endDate.getDate()).padStart(2, "0");
     const ymdEnd = `${yearEnd}${monthEnd}${dayEnd}`;
 
     // APIリクエストパラメータを準備
     const params: ConnpassSearchParamsV2 = {
       api_key: process.env.CONNPASS_API_KEY || "", // APIキーがない場合は空文字列
-      order: 1, // 開催日順
+      order: 2, // 開催日時順
       ymd: ymd, // 今日以降
       ymd_end: ymdEnd, // 指定日数後まで
+      count: 50, // 取得件数を最大の100件に設定
     };
 
     // 居住地が設定されている場合は、その地域のイベントをフィルタリング
+    // 注意: prefectureパラメータは英語で指定する必要がある
     if (prefecture) {
-      params.prefectures = prefecture;
+      // 都道府県名を英語表記に変換
+      let prefectureCode = "";
+      if (prefecture.includes("東京")) {
+        prefectureCode = "tokyo";
+      } else if (prefecture.includes("大阪")) {
+        prefectureCode = "osaka";
+      } else if (prefecture.includes("京都")) {
+        prefectureCode = "kyoto";
+      } else if (prefecture.includes("兵庫")) {
+        prefectureCode = "hyogo";
+      } else if (prefecture.includes("福岡")) {
+        prefectureCode = "fukuoka";
+      } else if (prefecture.includes("北海道")) {
+        prefectureCode = "hokkaido";
+      } else if (prefecture.includes("愛知")) {
+        prefectureCode = "aichi";
+      } else if (prefecture.includes("神奈川")) {
+        prefectureCode = "kanagawa";
+      } else {
+        // その他の場合はオンラインも含めて取得
+        prefectureCode = "online";
+      }
+
+      params.prefectures = prefectureCode;
+    } else {
+      // 居住地が指定されていない場合はオンラインイベントを取得
+      params.prefectures = "online";
     }
+
+    // 取得件数を多めに設定
+    params.count = 20;
 
     const response = await fetchConnpassEventsV2(params);
     console.log(`Connpass API V2: ${response.events.length}件取得しました`);
 
-    // 取得したイベントをPrismaのEvent型に変換
-    const events = response.events.map(convertConnpassEventToPrismaEvent);
+    // 取得したイベントを開催地でフィルタリング
+    const filteredEvents = response.events.filter((event) => {
+      const eventPlace = event.place || "";
+      const eventAddress = event.address || "";
+      const location = eventPlace + " " + eventAddress;
+
+      // ユーザーの居住地に近いか、オンラインイベントのみを残す
+      return (
+        (prefecture && location.includes(prefecture)) ||
+        location.toLowerCase().includes("オンライン") ||
+        location.toLowerCase().includes("online") ||
+        eventPlace.toLowerCase().includes("オンライン") ||
+        eventPlace.toLowerCase().includes("online") ||
+        eventPlace.toLowerCase().includes("teams") ||
+        eventPlace.toLowerCase().includes("zoom")
+      );
+    });
+
+    console.log(
+      `地域フィルタリング後: ${filteredEvents.length}件のイベントが残りました`
+    );
+
+    // フィルタリングしたイベントをPrismaのEvent型に変換
+    const events = filteredEvents.map(convertConnpassEventToPrismaEvent);
     return events;
   } catch (error) {
-    console.error('Connpass APIからイベントを取得できませんでした:', error);
+    console.error("Connpass APIからイベントを取得できませんでした:", error);
     return [];
   }
 };
