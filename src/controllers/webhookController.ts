@@ -8,6 +8,7 @@ import {
 import { recommendEventsForUser } from "../utils/recommendEvents";
 import { processRagQuery } from "../services/ragService";
 import { getUserByLineId } from "../utils/userUtils";
+import prisma from "../config/prisma"; // ★ Prisma Client をインポート
 
 /**
  * LINEのWebhookを処理するコントローラー
@@ -62,28 +63,79 @@ const handlePostbackEvent = async (event: any, lineUserId: string) => {
     // postbackデータをパース
     const data = new URLSearchParams(event.postback.data);
     const action = data.get("action");
+    const eventId = data.get("eventId"); // eventId はどちらのアクションでも使う可能性があるのでここで取得
+
+    // 内部ユーザーIDを取得（ブックマーク操作に必要）
+    const user = await getUserByLineId(lineUserId);
+    if (!user) {
+      console.error(`LINEユーザーID ${lineUserId} に対応するユーザーが見つかりません`);
+      // 必要に応じてユーザーにエラー通知を送ることも検討
+      // await sendLineNotificationToUser(lineUserId, "ユーザー情報が見つかりませんでした。");
+      return; // ユーザーが見つからない場合は処理を中断
+    }
+
+    if (!eventId) {
+      console.error("PostbackデータにeventIdが含まれていません", event.postback.data);
+      // 必要に応じてユーザーにエラー通知
+      return;
+    }
 
     if (action === "bookmark") {
-      const eventId = data.get("eventId");
+      try {
+        // ★ 内部ユーザーID (user.id) を使うように修正
+        const result = await addBookmarkFromLine(user.id, eventId);
 
-      if (eventId) {
-        try {
-          const result = await addBookmarkFromLine(lineUserId, eventId);
+        // ユーザーに結果を通知
+        await sendLineNotificationToUser(
+          lineUserId,
+          result.isNew
+            ? `イベントをブックマークに追加しました！`
+            : `このイベントは既にブックマークに追加されています`
+        );
+      } catch (error) {
+        console.error("ブックマーク追加処理エラー:", error);
+        await sendLineNotificationToUser(
+          lineUserId,
+          "ブックマークの追加中にエラーが発生しました。"
+        );
+      }
+    } else if (action === "unbookmark") { // ★ ブックマーク解除処理
+      try {
+        const deleteResult = await prisma.bookmark.deleteMany({
+          where: {
+            userId: user.id, // ★ 内部ユーザーID
+            eventId: eventId,
+          },
+        });
 
-          // ユーザーに結果を通知
+        if (deleteResult.count > 0) {
+          console.log(
+            `ユーザー ${user.id} のイベント ${eventId} のブックマークを削除しました`
+          );
           await sendLineNotificationToUser(
             lineUserId,
-            result.isNew
-              ? `イベントをブックマークに追加しました！`
-              : `このイベントは既にブックマークに追加されています`
+            "イベントのブックマークを解除しました。"
           );
-        } catch (error) {
-          console.error("ブックマーク処理エラー:", error);
+        } else {
+          // 削除対象が見つからなかった場合（念のため）
+          console.log(
+            `ユーザー ${user.id} のイベント ${eventId} のブックマークが見つかりませんでした（削除スキップ）`
+          );
+          // 必要であればユーザーに通知しても良い
+          // await sendLineNotificationToUser(lineUserId, "対象のブックマークが見つかりませんでした。");
         }
+      } catch (error) {
+        console.error("ブックマーク解除処理エラー:", error);
+        await sendLineNotificationToUser(
+          lineUserId,
+          "ブックマークの解除中にエラーが発生しました。"
+        );
       }
     }
+
   } catch (error) {
     console.error("postbackイベント処理エラー:", error);
+    // postback処理全体のエラーはユーザーに通知しない（個別処理内で通知済みのため）
   }
 };
 
