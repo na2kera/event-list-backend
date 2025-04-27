@@ -265,8 +265,8 @@ export const hydeEventsForUser = async (
         50
       );
 
-      // 類似度しきい値を設定（適切な値に設定）
-      const SIMILARITY_THRESHOLD = 0.85;
+      // 類似度しきい値を設定（低めに設定してより多くのイベントをマッチさせる）
+      const SIMILARITY_THRESHOLD = 0.8;
 
       // しきい値を超える結果のみをフィルタリング
       const filteredResults = resultsWithScores.filter(([doc, score]) => {
