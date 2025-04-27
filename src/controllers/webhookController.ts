@@ -291,40 +291,32 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           throw new Error(`ユーザー情報が見つかりません: ${lineUserId}`);
         }
 
-        // RAG処理を実行
-        const answer = await processRagQuery(messageText);
-
-        // 回答を送信
-        await sendLineNotificationToUser(lineUserId, answer);
-
         // 質問ベースのイベント推薦を実行
-        try {
-          console.log(`質問ベースのイベント推薦を実行します: "${messageText}"`);
-          const recommendedEvents = await recommendEventsByQuery(
-            messageText,
-            user.id
+        console.log(`質問ベースのイベント推薦を実行します: "${messageText}"`);
+        const recommendedEvents = await recommendEventsByQuery(
+          messageText,
+          user.id
+        );
+
+        if (recommendedEvents.length > 0) {
+          // イベントIDの配列を取得
+          const eventIds = recommendedEvents.map((event) => event.eventId);
+
+          // イベントカルーセルを送信
+          await sendEventCarouselToUser(user.id, eventIds);
+          console.log(
+            `ユーザー ${lineUserId} に質問ベースのイベントカルーセルを送信しました: ${eventIds.length}件`
           );
-
-          if (recommendedEvents.length > 0) {
-            // イベントIDの配列を取得
-            const eventIds = recommendedEvents.map((event) => event.eventId);
-
-            // イベントカルーセルを送信
-            await sendEventCarouselToUser(user.id, eventIds);
-            console.log(
-              `ユーザー ${lineUserId} に質問ベースのイベントカルーセルを送信しました: ${eventIds.length}件`
-            );
-          } else {
-            console.log("質問に関連するイベントが見つかりませんでした");
-          }
-        } catch (recommendError) {
-          console.error("質問ベースのイベント推薦エラー:", recommendError);
-          // 推薦エラーは無視して処理を続行
+        } else {
+          // 関連イベントが見つからない場合はメッセージを送信
+          await sendLineNotificationToUser(
+            lineUserId,
+            "お探しの条件に合うイベントは見つかりませんでした。別のキーワードや条件で探してみてください。"
+          );
+          console.log("質問に関連するイベントが見つかりませんでした");
         }
-
-        console.log(`ユーザー ${lineUserId} にRAG回答を送信しました`);
       } catch (error) {
-        console.error("RAG処理エラー:", error);
+        console.error("質問ベースのイベント推薦エラー:", error);
 
         // エラーが発生した場合はユーザーに通知
         await sendLineNotificationToUser(

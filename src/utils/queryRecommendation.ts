@@ -5,8 +5,8 @@ import { Event } from "@prisma/client";
 import { fetchConnpassEventsByKeywords } from "./connpassEventUtils";
 import { getDateRangeWithDefaults } from "./dateUtils";
 import { rankEventsByKeywordMatch } from "./keywordRecommendation";
-import { selectOptimalEventsWithLLM } from "./keywordRecommendation";
 import { getUserById } from "./userUtils";
+import { RankedEvent } from "./keywordRecommendation";
 
 /**
  * ユーザー情報の型定義
@@ -205,10 +205,10 @@ export const recommendEventsByQuery = async (
       return [];
     }
 
-    // 5. LLMに最適なイベントを選択させる
-    const recommendedEvents = await selectOptimalEventsWithLLM(
+    // 5. LLMに最適なイベントを選択させる（質問内容のみ考慮）
+    const recommendedEvents = await selectEventsByQueryOnly(
       rankedEvents,
-      userInfo
+      query
     );
 
     // 6. 関連性スコアが一定以上のイベントのみをフィルタリング
@@ -225,6 +225,160 @@ export const recommendEventsByQuery = async (
     return filteredEvents;
   } catch (error) {
     console.error("質問ベースのイベント推薦エラー:", error);
+    return [];
+  }
+};
+
+/**
+ * 質問内容のみに基づいてイベントを選択する関数
+ * @param rankedEvents ランキング付けされたイベントの配列
+ * @param query ユーザーの質問
+ * @returns LLMが選んだ推薦イベントの配列
+ */
+export const selectEventsByQueryOnly = async (
+  rankedEvents: RankedEvent[],
+  query: string
+): Promise<LLMRecommendedEvent[]> => {
+  try {
+    console.log(
+      `LLMに${rankedEvents.length}件のイベントから質問「${query}」に関連するイベントを選択させます...`
+    );
+
+    // イベント情報を整形
+    const eventsInfo = rankedEvents
+      .map((rankedEvent, index) => {
+        const event = rankedEvent.event;
+        return `
+イベント${index + 1}:
+ID: ${event.id}
+タイトル: ${event.title}
+開催日: ${
+          event.eventDate
+            ? new Date(event.eventDate).toLocaleDateString("ja-JP")
+            : "未定"
+        }
+場所: ${event.venue || event.address || "オンライン"}
+キーワードマッチスコア: ${rankedEvent.score}
+マッチしたキーワード: ${rankedEvent.matchedKeywords.join(", ")}
+説明: ${
+          event.description
+            ? event.description.substring(0, 200) + "..."
+            : "説明なし"
+        }
+URL: ${event.detailUrl || ""}
+`;
+      })
+      .join("\n");
+
+    // LLMを使用してイベントを選択
+    const llm = new ChatOpenAI({
+      modelName: "gpt-3.5-turbo",
+      temperature: 0.3,
+    });
+
+    // 構造化出力パーサーを定義
+    const outputParser = StructuredOutputParser.fromZodSchema(
+      z.object({
+        recommendedEvents: z
+          .array(
+            z.object({
+              eventId: z.string().describe("イベントのID"),
+              title: z.string().describe("イベントのタイトル"),
+              relevanceScore: z
+                .number()
+                .min(0)
+                .max(100)
+                .describe("質問との関連性スコア（0-100）"),
+            })
+          )
+          .min(1)
+          .describe("質問に関連するイベントのみ"),
+      })
+    );
+
+    // パーサーの説明を取得
+    const formatInstructions = outputParser.getFormatInstructions();
+
+    // プロンプトの作成
+    const recommendationPrompt = `
+あなたはイベント推薦の専門家です。以下のユーザーの質問と候補イベントリストを分析して、質問に最も関連するイベントを選んでください。
+
+【ユーザーの質問】
+${query}
+
+【候補イベントリスト】
+${eventsInfo}
+
+【評価基準】
+1. 質問の意図との関連性
+2. 質問で言及されたキーワードとの一致度
+3. 質問で言及された条件（場所、日時、形式など）との一致度
+
+【指示】
+- 上記の評価基準に基づいて、質問に関連するイベントのみを選んでください。数に制限はありませんが、本当に質問に関連するイベントのみを選んでください。
+- 各イベントに0-100の関連性スコアを付けてください（100が最も関連性が高い）。
+- ユーザーの個人的な情報（技術スタック、興味、レベル、目標など）は考慮せず、質問内容のみに基づいて選んでください。
+
+${formatInstructions}
+`;
+
+    // LLMからの回答を取得
+    const llmResponse = await llm.invoke([
+      {
+        role: "user",
+        content: recommendationPrompt,
+      },
+    ]);
+
+    console.log("LLMからイベント推薦を受信しました");
+
+    // LLMの回答を解析
+    let recommendedEvents: LLMRecommendedEvent[] = [];
+
+    try {
+      // contentの型に応じて適切に処理
+      let contentStr = "";
+      if (typeof llmResponse.content === "string") {
+        contentStr = llmResponse.content;
+      } else if (
+        Array.isArray(llmResponse.content) &&
+        llmResponse.content.length > 0
+      ) {
+        if (typeof llmResponse.content[0] === "string") {
+          contentStr = llmResponse.content[0];
+        } else if (
+          llmResponse.content[0] &&
+          typeof llmResponse.content[0] === "object"
+        ) {
+          contentStr = JSON.stringify(llmResponse.content[0]);
+        }
+      } else if (llmResponse.content) {
+        contentStr = String(llmResponse.content);
+      }
+
+      // 構造化された出力を解析
+      const parsedOutput = await outputParser.parse(contentStr);
+
+      recommendedEvents = parsedOutput.recommendedEvents;
+
+      console.log(`LLMが${recommendedEvents.length}件のイベントを推薦しました`);
+    } catch (error) {
+      console.log(
+        "構造化出力の解析に失敗しました。フォールバック処理を実行します。",
+        error
+      );
+
+      // フォールバック処理：上位5件のイベントを選択
+      recommendedEvents = rankedEvents.slice(0, 5).map((rankedEvent) => ({
+        eventId: rankedEvent.event.id,
+        title: rankedEvent.event.title,
+        relevanceScore: Math.min(Math.round(rankedEvent.score * 10), 100), // スコアを0-100に変換
+      }));
+    }
+
+    return recommendedEvents;
+  } catch (error) {
+    console.error("イベント選択エラー:", error);
     return [];
   }
 };
