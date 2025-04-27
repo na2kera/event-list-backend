@@ -57,9 +57,9 @@ export const convertConnpassEventToPrismaEvent = (
 
   // 開催形式の判定（開催場所のみを見るように改善）
   let format: EventFormat = EventFormat.OFFLINE; // デフォルト値
-  
+
   const place = connpassEvent.place?.toLowerCase() || "";
-  
+
   if (
     place.includes("オンライン") ||
     place.includes("online") ||
@@ -69,10 +69,7 @@ export const convertConnpassEventToPrismaEvent = (
     place.includes("virtual")
   ) {
     format = EventFormat.ONLINE;
-  } else if (
-    place.includes("ハイブリッド") ||
-    place.includes("hybrid")
-  ) {
+  } else if (place.includes("ハイブリッド") || place.includes("hybrid")) {
     format = EventFormat.HYBRID;
   }
 
@@ -153,7 +150,7 @@ export const fetchAndConvertConnpassEvents = async (
       order: 2, // 開催日時順
       ymd: ymd, // 今日以降
       ymd_end: ymdEnd, // 指定日数後まで
-      count: 50, // 取得件数を最大の100件に設定
+      count: 100, // 取得件数を最大の100件に設定
     };
 
     // 居住地が設定されている場合は、その地域のイベントをフィルタリング
@@ -179,19 +176,19 @@ export const fetchAndConvertConnpassEvents = async (
       const eventPlace = event.place || "";
       const eventAddress = event.address || "";
       const location = eventPlace + " " + eventAddress;
-      
+
       // オンラインイベントかチェック
-      const isOnlineEvent = 
+      const isOnlineEvent =
         location.toLowerCase().includes("オンライン") ||
         location.toLowerCase().includes("online") ||
         eventPlace.toLowerCase().includes("オンライン") ||
         eventPlace.toLowerCase().includes("online") ||
         eventPlace.toLowerCase().includes("teams") ||
         eventPlace.toLowerCase().includes("zoom");
-      
+
       // ユーザーの居住地に近いイベントかチェック
       const isNearUserLocation = prefecture && location.includes(prefecture);
-      
+
       // オンラインイベントか、ユーザーの居住地に近いイベントのみを残す
       return isOnlineEvent || isNearUserLocation;
     });
@@ -256,7 +253,7 @@ export const fetchConnpassEventsByKeywords = async (
 
       // 都道府県名を英語表記に変換（prefectureUtils.tsの関数を使用）
       const prefectureCode = convertPrefectureToCode(prefecture);
-      
+
       // オンライン以外の場合のみprefecturesパラメータを設定
       if (prefectureCode !== "online") {
         params.prefectures = prefectureCode;

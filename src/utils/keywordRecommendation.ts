@@ -70,7 +70,7 @@ export const generateKeywordsAndFetchEvents = async (
     // 構造化出力パーサーを定義
     const outputParser = StructuredOutputParser.fromZodSchema(
       z.object({
-        keywords: z.array(z.string()).describe("キーワードの配列（30個以上）"),
+        keywords: z.array(z.string()).describe("具体的なキーワードの配列（15-20個）"),
       })
     );
 
@@ -79,7 +79,7 @@ export const generateKeywordsAndFetchEvents = async (
 
     // プロンプトの作成
     const keywordPrompt = `
-以下のユーザー情報に基づいて、このユーザーが興味を持ちそうなイベントを検索するためのキーワードを生成してください。
+以下のユーザー情報に基づいて、このユーザーが興味を持ちそうなイベントを検索するための具体的なキーワードを生成し、関連する効果的なキーワードも提案してください。
 
 【ユーザー情報】
 居住地: ${userInfo.place}
@@ -87,8 +87,22 @@ export const generateKeywordsAndFetchEvents = async (
 目標: ${userInfo.goal}
 
 【指示】
-1. キーワードは単語または短いフレーズにしてください（例：「Python」「機械学習」「ハッカソン」「初心者向け」など）
-2. ユーザーの興味タグと目標に基づいて、イベント検索に有用なキーワードを30個以上生成してください。興味タグの各項目に対して少なくとも1つのキーワードを含めてください。
+1. まず、ユーザーの興味タグと目標から直接関連する具体的なキーワードを生成してください。以下のカテゴリに分けて考えてください：
+   - 技術名: 具体的な言語やフレームワーク名（例: React, Python, TensorFlow, Docker）
+   - イベントタイプ: 具体的なイベント形式（例: ハッカソン, ワークショップ, ハンズオン）
+   - トピック: 具体的な分野やテーマ（例: 機械学習, Web開発, セキュリティ）
+   - レベル: 具体的な難易度（例: 初心者向け, 中級者, 上級者）
+
+2. 次に、直接関連するキーワードから発展させた関連キーワードを生成してください。例えば：
+   - 例：「Python」から「Django」「FastAPI」「Pandas」「NumPy」など
+   - 例：「Web開発」から「HTML」「CSS」「JavaScript」「React」など
+   - 例：「機械学習」から「TensorFlow」「PyTorch」「ディープラーニング」など
+
+3. 以下のような汎用的な言葉は避けてください（検索結果が広くなりすぎるため）
+   - 避ける例: 「イベント」「技術」「参加」「学習」「開発」などの一般的すぎる言葉
+   - 代わりに: 「Pythonワークショップ」「Reactハンズオン」のような具体的な言葉を使用
+
+4. 最終的に、ユーザーの興味と目標に最も関連する具体的なキーワードを15-20個に絞り込んでください。直接関連するキーワードと発展させた関連キーワードの両方を含めてください。
 
 ${formatInstructions}
 `;
