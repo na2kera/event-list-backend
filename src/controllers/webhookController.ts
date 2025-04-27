@@ -11,6 +11,7 @@ import {
 } from "../utils/recommendEvents";
 import { processRagQuery } from "../services/ragService";
 import { getUserByLineId } from "../utils/userUtils";
+import { recommendEventsByQuery } from "../utils/queryRecommendation";
 import prisma from "../config/prisma"; // ★ Prisma Client をインポート
 
 /**
@@ -71,14 +72,19 @@ const handlePostbackEvent = async (event: any, lineUserId: string) => {
     // 内部ユーザーIDを取得（ブックマーク操作に必要）
     const user = await getUserByLineId(lineUserId);
     if (!user) {
-      console.error(`LINEユーザーID ${lineUserId} に対応するユーザーが見つかりません`);
+      console.error(
+        `LINEユーザーID ${lineUserId} に対応するユーザーが見つかりません`
+      );
       // 必要に応じてユーザーにエラー通知を送ることも検討
       // await sendLineNotificationToUser(lineUserId, "ユーザー情報が見つかりませんでした。");
       return; // ユーザーが見つからない場合は処理を中断
     }
 
     if (!eventId) {
-      console.error("PostbackデータにeventIdが含まれていません", event.postback.data);
+      console.error(
+        "PostbackデータにeventIdが含まれていません",
+        event.postback.data
+      );
       // 必要に応じてユーザーにエラー通知
       return;
     }
@@ -102,7 +108,8 @@ const handlePostbackEvent = async (event: any, lineUserId: string) => {
           "ブックマークの追加中にエラーが発生しました。"
         );
       }
-    } else if (action === "unbookmark") { // ★ ブックマーク解除処理
+    } else if (action === "unbookmark") {
+      // ★ ブックマーク解除処理
       try {
         const deleteResult = await prisma.bookmark.deleteMany({
           where: {
@@ -135,7 +142,6 @@ const handlePostbackEvent = async (event: any, lineUserId: string) => {
         );
       }
     }
-
   } catch (error) {
     console.error("postbackイベント処理エラー:", error);
     // postback処理全体のエラーはユーザーに通知しない（個別処理内で通知済みのため）
@@ -279,11 +285,42 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
       try {
         console.log(`ユーザー ${lineUserId} からの質問: ${messageText}`);
 
+        // ユーザー情報を取得
+        const user = await getUserByLineId(lineUserId);
+        if (!user) {
+          throw new Error(`ユーザー情報が見つかりません: ${lineUserId}`);
+        }
+
         // RAG処理を実行
         const answer = await processRagQuery(messageText);
 
         // 回答を送信
         await sendLineNotificationToUser(lineUserId, answer);
+
+        // 質問ベースのイベント推薦を実行
+        try {
+          console.log(`質問ベースのイベント推薦を実行します: "${messageText}"`);
+          const recommendedEvents = await recommendEventsByQuery(
+            messageText,
+            user.id
+          );
+
+          if (recommendedEvents.length > 0) {
+            // イベントIDの配列を取得
+            const eventIds = recommendedEvents.map((event) => event.eventId);
+
+            // イベントカルーセルを送信
+            await sendEventCarouselToUser(user.id, eventIds);
+            console.log(
+              `ユーザー ${lineUserId} に質問ベースのイベントカルーセルを送信しました: ${eventIds.length}件`
+            );
+          } else {
+            console.log("質問に関連するイベントが見つかりませんでした");
+          }
+        } catch (recommendError) {
+          console.error("質問ベースのイベント推薦エラー:", recommendError);
+          // 推薦エラーは無視して処理を続行
+        }
 
         console.log(`ユーザー ${lineUserId} にRAG回答を送信しました`);
       } catch (error) {
