@@ -156,7 +156,7 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
     const messageText = event.message.text;
 
     // 「レコメンド１」というテキストを受け取った場合の処理（HyDEベース）
-    if (messageText === "レコメンド１") {
+    if (messageText === "レコメンド1") {
       try {
         console.log(
           `ユーザー ${lineUserId} からレコメンドリクエストを受信しました`
@@ -192,7 +192,7 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
     }
 
     // 「レコメンド２」というテキストを受け取った場合の処理（キーワードベース）
-    else if (messageText === "レコメンド２") {
+    else if (messageText === "レコメンド2") {
       try {
         console.log(
           `ユーザー ${lineUserId} からキーワードベースのレコメンドリクエストを受信しました`
