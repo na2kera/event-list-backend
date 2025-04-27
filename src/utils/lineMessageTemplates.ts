@@ -1,17 +1,23 @@
-import { Event } from "@prisma/client";
+import { Event, Bookmark } from "@prisma/client"; 
+import { EventWithBookmarkStatus } from "../types/lineTypes"; 
 
 /**
  * イベントカルーセルメッセージを生成する
- * @param events イベント配列
+ * @param events イベント配列（ブックマーク情報付き）
  * @param userId ユーザーID
  * @returns カルーセルメッセージオブジェクト
  */
 export const createEventRecommendlMessage = (
-  events: Event[],
+  events: EventWithBookmarkStatus[],
   userId: string
 ) => {
   // イベントごとにバブルを作成
   const bubbles = events.map((event) => {
+    // ブックマークボタンのラベルとアクションデータを動的に設定
+    const bookmarkLabel = event.isBookmarked ? "ブックマーク解除" : "ブックマークに追加";
+    const bookmarkAction = event.isBookmarked ? "unbookmark" : "bookmark";
+    const bookmarkData = `action=${bookmarkAction}&eventId=${event.id}&userId=${userId}`;
+
     return {
       type: "bubble",
       hero: {
@@ -135,8 +141,8 @@ export const createEventRecommendlMessage = (
             height: "sm",
             action: {
               type: "postback",
-              label: "ブックマークに追加",
-              data: `action=bookmark&eventId=${event.id}&userId=${userId}`,
+              label: bookmarkLabel,
+              data: bookmarkData,
             },
           },
           {
