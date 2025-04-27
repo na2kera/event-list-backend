@@ -122,8 +122,30 @@ export const sendEventCarouselToUser = async (
       throw new Error("指定されたイベントが見つかりません");
     }
 
+    // ユーザーのブックマーク情報を取得
+    const bookmarks = await prisma.bookmark.findMany({
+      where: {
+        userId: userId,
+        eventId: {
+          in: eventIds,
+        },
+      },
+      select: {
+        eventId: true, // ブックマークされているイベントIDだけ取得
+      },
+    });
+    const bookmarkedEventIds = new Set(bookmarks.map((b) => b.eventId));
+
+    // イベントデータにブックマーク状態を追加
+    const eventsWithBookmarkStatus = events.map((event) => {
+      const isBookmarked = bookmarkedEventIds.has(event.id);
+      // Bookmark情報は不要なので含めない
+      // (EventWithBookmarkStatus型にはBookmarkプロパティは含まれないため)
+      return { ...event, isBookmarked };
+    });
+
     // カルーセルメッセージを作成
-    const carouselMessage = createEventRecommendlMessage(events, userId);
+    const carouselMessage = createEventRecommendlMessage(eventsWithBookmarkStatus, userId);
 
     // LINE Messaging APIを使用してカルーセルを送信
     const response = await axios.post(
