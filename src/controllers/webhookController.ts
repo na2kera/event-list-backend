@@ -11,6 +11,7 @@ import {
 } from "../utils/recommendEvents";
 import { processRagQuery } from "../services/ragService";
 import { getUserByLineId } from "../utils/userUtils";
+import { recommendEventsByQuery } from "../utils/queryRecommendation";
 
 /**
  * LINEのWebhookを処理するコントローラー
@@ -227,11 +228,37 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
       try {
         console.log(`ユーザー ${lineUserId} からの質問: ${messageText}`);
 
+        // ユーザー情報を取得
+        const user = await getUserByLineId(lineUserId);
+        if (!user) {
+          throw new Error(`ユーザー情報が見つかりません: ${lineUserId}`);
+        }
+
         // RAG処理を実行
         const answer = await processRagQuery(messageText);
 
         // 回答を送信
         await sendLineNotificationToUser(lineUserId, answer);
+
+        // 質問ベースのイベント推薦を実行
+        try {
+          console.log(`質問ベースのイベント推薦を実行します: "${messageText}"`);
+          const recommendedEvents = await recommendEventsByQuery(messageText, user.id);
+          
+          if (recommendedEvents.length > 0) {
+            // イベントIDの配列を取得
+            const eventIds = recommendedEvents.map(event => event.eventId);
+            
+            // イベントカルーセルを送信
+            await sendEventCarouselToUser(user.id, eventIds);
+            console.log(`ユーザー ${lineUserId} に質問ベースのイベントカルーセルを送信しました: ${eventIds.length}件`);
+          } else {
+            console.log("質問に関連するイベントが見つかりませんでした");
+          }
+        } catch (recommendError) {
+          console.error("質問ベースのイベント推薦エラー:", recommendError);
+          // 推薦エラーは無視して処理を続行
+        }
 
         console.log(`ユーザー ${lineUserId} にRAG回答を送信しました`);
       } catch (error) {
