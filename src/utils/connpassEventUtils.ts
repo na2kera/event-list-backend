@@ -55,22 +55,23 @@ export const convertConnpassEventToPrismaEvent = (
     eventType = EventType.LIGHTNING_TALK;
   }
 
-  // 開催形式の判定
+  // 開催形式の判定（開催場所のみを見るように改善）
   let format: EventFormat = EventFormat.OFFLINE; // デフォルト値
+  
+  const place = connpassEvent.place?.toLowerCase() || "";
+  
   if (
-    title.includes("オンライン") ||
-    description.includes("オンライン") ||
-    tags.includes("online") ||
-    tags.includes("オンライン") ||
-    connpassEvent.place?.includes("オンライン") ||
-    connpassEvent.place?.toLowerCase().includes("online")
+    place.includes("オンライン") ||
+    place.includes("online") ||
+    place.includes("zoom") ||
+    place.includes("teams") ||
+    place.includes("meet") ||
+    place.includes("virtual")
   ) {
     format = EventFormat.ONLINE;
   } else if (
-    title.includes("ハイブリッド") ||
-    description.includes("ハイブリッド") ||
-    tags.includes("hybrid") ||
-    tags.includes("ハイブリッド")
+    place.includes("ハイブリッド") ||
+    place.includes("hybrid")
   ) {
     format = EventFormat.HYBRID;
   }
@@ -178,17 +179,21 @@ export const fetchAndConvertConnpassEvents = async (
       const eventPlace = event.place || "";
       const eventAddress = event.address || "";
       const location = eventPlace + " " + eventAddress;
-
-      // ユーザーの居住地に近いか、オンラインイベントのみを残す
-      return (
-        (prefecture && location.includes(prefecture)) ||
+      
+      // オンラインイベントかチェック
+      const isOnlineEvent = 
         location.toLowerCase().includes("オンライン") ||
         location.toLowerCase().includes("online") ||
         eventPlace.toLowerCase().includes("オンライン") ||
         eventPlace.toLowerCase().includes("online") ||
         eventPlace.toLowerCase().includes("teams") ||
-        eventPlace.toLowerCase().includes("zoom")
-      );
+        eventPlace.toLowerCase().includes("zoom");
+      
+      // ユーザーの居住地に近いイベントかチェック
+      const isNearUserLocation = prefecture && location.includes(prefecture);
+      
+      // オンラインイベントか、ユーザーの居住地に近いイベントのみを残す
+      return isOnlineEvent || isNearUserLocation;
     });
 
     console.log(
@@ -249,27 +254,11 @@ export const fetchConnpassEventsByKeywords = async (
         ? place.split("都")[0].split("道")[0].split("府")[0].split("県")[0]
         : "";
 
-      // 都道府県名を英語表記に変換
-      let prefectureCode = "";
-      if (prefecture.includes("東京")) {
-        prefectureCode = "tokyo";
-      } else if (prefecture.includes("大阪")) {
-        prefectureCode = "osaka";
-      } else if (prefecture.includes("京都")) {
-        prefectureCode = "kyoto";
-      } else if (prefecture.includes("兵庫")) {
-        prefectureCode = "hyogo";
-      } else if (prefecture.includes("福岡")) {
-        prefectureCode = "fukuoka";
-      } else if (prefecture.includes("北海道")) {
-        prefectureCode = "hokkaido";
-      } else if (prefecture.includes("愛知")) {
-        prefectureCode = "aichi";
-      } else if (prefecture.includes("神奈川")) {
-        prefectureCode = "kanagawa";
-      }
-
-      if (prefectureCode) {
+      // 都道府県名を英語表記に変換（prefectureUtils.tsの関数を使用）
+      const prefectureCode = convertPrefectureToCode(prefecture);
+      
+      // オンライン以外の場合のみprefecturesパラメータを設定
+      if (prefectureCode !== "online") {
         params.prefectures = prefectureCode;
       }
     }
