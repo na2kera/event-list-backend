@@ -165,8 +165,8 @@ export const fetchAndConvertConnpassEvents = async (
       params.prefectures = "online";
     }
 
-    // 取得件数を多めに設定
-    params.count = 20;
+    // 取得件数を最大値に設定
+    params.count = 100;
 
     const response = await fetchConnpassEventsV2(params);
     console.log(`Connpass API V2: ${response.events.length}件取得しました`);

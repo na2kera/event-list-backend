@@ -39,7 +39,7 @@ async function testRecommendEvents() {
 
     // レコメンド処理の実行
     const startTime = Date.now();
-    const recommendedEventIds = await recommendEventsByKeyword(testUserId);
+    const recommendedEventIds = await recommendEventsByHyDE(testUserId);
     const endTime = Date.now();
 
     console.log(
@@ -51,12 +51,26 @@ async function testRecommendEvents() {
 
     if (recommendedEventIds.length > 0) {
       console.log("\nレコメンドされたイベント:");
-      recommendedEventIds.forEach((event, index) => {
-        console.log(`${index + 1}. ID: ${event.eventId}`);
-        console.log(`   タイトル: ${event.title}`);
-        console.log(`   関連性スコア: ${event.relevanceScore}`);
-        console.log('---');
+      recommendedEventIds.forEach((eventId, index) => {
+        console.log(`${index + 1}. イベントID: ${eventId}`);
       });
+
+      // イベントIDから詳細情報を取得する場合は以下のようにする
+      // const eventDetails = await Promise.all(
+      //   recommendedEventIds.map(async (eventId) => {
+      //     return await prisma.event.findUnique({
+      //       where: { id: eventId },
+      //     });
+      //   })
+      // );
+      //
+      // eventDetails.forEach((event, index) => {
+      //   if (event) {
+      //     console.log(`${index + 1}. ID: ${event.id}`);
+      //     console.log(`   タイトル: ${event.title}`);
+      //     console.log("---");
+      //   }
+      // });
     } else {
       console.log("レコメンドされたイベントはありませんでした。");
     }
