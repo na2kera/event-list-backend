@@ -265,6 +265,7 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
               format: event.eventFormat === "オンライン" ? "ONLINE" : "OFFLINE", // スキーマのenumに合わせる
               difficulty: "FOR_EVERYONE", // スキーマのenumに合わせる
               price: 0, // スキーマの型に合わせる
+              detailUrl: "https://talent.supporterz.jp/events/",
             },
           });
         } else {
