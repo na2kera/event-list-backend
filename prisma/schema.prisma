@@ -49,19 +49,19 @@ model Category {
 }
 
 model Event {
-  id             String          @id
+  id             String          @id @default(uuid())
   title          String
   description    String?
   eventDate      DateTime
-  startTime      String
+  startTime      String?
   endTime        String?
-  venue          String
+  venue          String?
   address        String?
   location       String?
   detailUrl      String?
   organizationId String
   createdAt      DateTime        @default(now())
-  updatedAt      DateTime
+  updatedAt      DateTime        @updatedAt
   image          String?
   format         EventFormat     @default(OFFLINE)
   difficulty     DifficultyLevel @default(FOR_EVERYONE)
@@ -126,13 +126,13 @@ model EventSpeaker {
 }
 
 model Organization {
-  id          String   @id
-  name        String
+  id          String   @id @default(uuid())
+  name        String   @unique
   description String?
   website     String?
   email       String?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime
+  updatedAt   DateTime @updatedAt
   Event       Event[]
 }
 
