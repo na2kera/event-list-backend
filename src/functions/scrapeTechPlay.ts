@@ -6,7 +6,7 @@ import { EventFormat, DifficultyLevel, EventType } from "@prisma/client";
 
 const TECHPLAY_BASE_URL =
   "https://techplay.jp/event/search?sort=started_at.asc&page=";
-const MAX_PAGES = 1;
+const MAX_PAGES = 10;
 const OUTPUT_DIR = path.join(__dirname, "../../output");
 const COMBINED_OUTPUT_FILE_PATH = path.join(
   OUTPUT_DIR,
@@ -15,8 +15,9 @@ const COMBINED_OUTPUT_FILE_PATH = path.join(
 const EVENTS_JSON_PATH = path.join(OUTPUT_DIR, "techplay_events.json");
 // サーバー負荷軽減のための待機時間（ミリ秒）
 const RATE_LIMIT_DELAY = {
-  BETWEEN_PAGES: 5000, // ページ間の待機時間
-  AFTER_PAGE_LOAD: 3000, // ページロード後の待機時間
+  BETWEEN_PAGES: 8000, // ページ間の待機時間（8秒）
+  BETWEEN_EVENTS: 3000, // イベント詳細取得間の待機時間（3秒）
+  AFTER_PAGE_LOAD: 2000, // ページロード後の待機時間（2秒）
 };
 
 interface TechPlayEvent {
@@ -494,107 +495,139 @@ async function scrapeTechPlayAndExtractData(): Promise<TechPlayEvent[]> {
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     );
 
-    const currentPageUrl = `${TECHPLAY_BASE_URL}1`;
-    console.log(`TechPlayのURLに移動します: ${currentPageUrl}`);
+    // 複数ページを処理するループを追加
+    for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {
+      console.log(`ページ ${pageNum}/${MAX_PAGES} を処理中...`);
 
-    try {
-      await page.goto(currentPageUrl, {
-        waitUntil: "networkidle2",
-        timeout: 60000,
-      });
+      const currentPageUrl = `${TECHPLAY_BASE_URL}${pageNum}`;
+      console.log(`TechPlayのURLに移動します: ${currentPageUrl}`);
 
-      console.log("イベントデータを抽出します...");
-      const eventCards = await page.evaluate(() => {
-        const cards =
-          document.querySelectorAll<HTMLElement>("div.eventlist-card");
-        return Array.from(cards)
-          .slice(0, 3)
-          .map((card) => {
-            // 場所情報を取得（地図アイコンの後のspanタグ）
-            const locationElement = card.querySelector(
-              ".eventlist-card-area span"
+      try {
+        await page.goto(currentPageUrl, {
+          waitUntil: "networkidle2",
+          timeout: 60000,
+        });
+
+        console.log(`ページ ${pageNum} のイベントデータを抽出します...`);
+        const eventCards = await page.evaluate(() => {
+          const cards =
+            document.querySelectorAll<HTMLElement>("div.eventlist-card");
+          return Array.from(cards) // .slice(0, 3) を削除してすべてのイベントを取得
+            .map((card) => {
+              // 場所情報を取得（地図アイコンの後のspanタグ）
+              const locationElement = card.querySelector(
+                ".eventlist-card-area span"
+              );
+              const venue = locationElement?.textContent?.trim() || null;
+
+              return {
+                title:
+                  card
+                    .querySelector("h3.eventlist-card-title a")
+                    ?.textContent?.trim() || null,
+                eventUrl:
+                  card
+                    .querySelector("h3.eventlist-card-title a")
+                    ?.getAttribute("href") || null,
+                venue: venue, // 場所情報を追加（「東京都」「オンライン」など）
+                organizer: "TECH PLAY", // 統一した主催者名
+              };
+            });
+        });
+
+        console.log(
+          `ページ ${pageNum} で ${eventCards.length} 件のイベントを取得しました`
+        );
+
+        // 各イベントの詳細情報を取得
+        for (let i = 0; i < eventCards.length; i++) {
+          const cardData = eventCards[i];
+          if (cardData.eventUrl) {
+            console.log(
+              `詳細取得中: ${i + 1}/${eventCards.length} - ${cardData.title}`
             );
-            const venue = locationElement?.textContent?.trim() || null;
 
-            return {
-              title:
-                card
-                  .querySelector("h3.eventlist-card-title a")
-                  ?.textContent?.trim() || null,
-              eventUrl:
-                card
-                  .querySelector("h3.eventlist-card-title a")
-                  ?.getAttribute("href") || null,
-              venue: venue, // 場所情報を追加（「東京都」「オンライン」など）
-              organizer: "TECH PLAY", // 統一した主催者名
+            // レート制限のための待機（最初のイベント以外）
+            if (i > 0) {
+              console.log(`${RATE_LIMIT_DELAY.BETWEEN_EVENTS}ms 待機中...`);
+              await new Promise((resolve) =>
+                setTimeout(resolve, RATE_LIMIT_DELAY.BETWEEN_EVENTS)
+              );
+            }
+
+            const detailData = await scrapeEventDetails(
+              page,
+              cardData.eventUrl
+            );
+
+            // TechPlayEvent オブジェクトを構築
+            const fullEvent: TechPlayEvent = {
+              title: cardData.title,
+              eventUrl: cardData.eventUrl,
+              startDate: null,
+              endDate: null,
+              venue: cardData.venue,
+              format: "UNKNOWN",
+              tags: [],
+              platform: "TechPlay",
+              thumbnailUrl: null,
+              description: null,
+              capacity: null,
+              participantCount: null,
+              fee: null,
+              organizer: "TECH PLAY",
+              detailedVenue: null,
+              registrationUrl: null,
+              contactInfo: null,
+              dateTime: { start: "", end: "" },
+              participation: [],
+              details: {
+                overview: "",
+                schedule: [],
+                target: "",
+                speakers: [],
+                organizer: { name: "TECH PLAY", description: "" },
+              },
+              ...detailData, // scrapeEventDetails から取得した部分的な情報で上書き
             };
-          });
-      });
 
-      console.log("最初の3件の詳細ページHTMLを保存し、データを抽出します...");
-      for (const cardData of eventCards) {
-        if (cardData.eventUrl) {
+            // 主催者名を強制的に TECH PLAY に設定
+            fullEvent.organizer = "TECH PLAY";
+            fullEvent.details.organizer.name = "TECH PLAY";
+
+            allEventsData.push(fullEvent);
+          }
+        }
+
+        console.log(
+          `ページ ${pageNum} の処理完了。累計: ${allEventsData.length} 件`
+        );
+
+        // ページ間の待機時間
+        if (pageNum < MAX_PAGES) {
+          console.log(
+            `次のページまで ${RATE_LIMIT_DELAY.BETWEEN_PAGES}ms 待機中...`
+          );
           await new Promise((resolve) =>
             setTimeout(resolve, RATE_LIMIT_DELAY.BETWEEN_PAGES)
           );
-          const detailData = await scrapeEventDetails(page, cardData.eventUrl);
-
-          // TechPlayEvent オブジェクトを構築
-          const fullEvent: TechPlayEvent = {
-            title: cardData.title,
-            eventUrl: cardData.eventUrl,
-            startDate: null,
-            endDate: null,
-            venue: cardData.venue,
-            format: "UNKNOWN",
-            tags: [],
-            platform: "TechPlay",
-            thumbnailUrl: null,
-            description: null,
-            capacity: null,
-            participantCount: null,
-            fee: null,
-            organizer: "TECH PLAY", // 統一した主催者名
-            detailedVenue: null,
-            registrationUrl: null,
-            contactInfo: null,
-            dateTime: { start: "", end: "" },
-            participation: [],
-            details: {
-              overview: "",
-              schedule: [],
-              target: "",
-              speakers: [],
-              organizer: { name: "TECH PLAY", description: "" },
-            },
-            ...detailData, // scrapeEventDetails から取得した部分的な情報で上書き
-          };
-
-          // 主催者名を強制的に TECH PLAY に設定
-          fullEvent.organizer = "TECH PLAY";
-          fullEvent.details.organizer.name = "TECH PLAY";
-
-          allEventsData.push(fullEvent);
         }
-      }
-      await saveEventsAsJson(allEventsData); // TechPlayEvent[] 型のデータを保存
-    } catch (error) {
-      console.error("ページ処理中にエラーが発生しました:", error);
-      // エラーが発生した場合でも、ここまでの allEventsData (空または部分的) が最終的に返される
-    }
-
-    // 詳細ページの情報を取得
-    console.log("詳細ページの情報を取得中...");
-    for (let i = 0; i < Math.min(allEventsData.length, 3); i++) {
-      const event = allEventsData[i];
-      if (event.eventUrl) {
-        const detailData = await scrapeEventDetails(page, event.eventUrl);
-        if (detailData) {
-          // 詳細情報をマージ
-          allEventsData[i] = { ...event, ...detailData };
-        }
+      } catch (error) {
+        console.error(
+          `ページ ${pageNum} の処理中にエラーが発生しました:`,
+          error
+        );
+        // エラーが発生してもページ処理を続行
+        continue;
       }
     }
+
+    console.log(
+      `全 ${MAX_PAGES} ページの処理完了。合計 ${allEventsData.length} 件のイベントを取得しました`
+    );
+
+    // JSONファイルに保存
+    await saveEventsAsJson(allEventsData);
 
     // データベースに保存
     await saveTechPlayEventsToDatabase(allEventsData);
