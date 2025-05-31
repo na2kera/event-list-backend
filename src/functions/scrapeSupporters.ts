@@ -10,9 +10,9 @@ const OUTPUT_DIR = path.join(__dirname, "../../output");
 const SUPPORTERS_JSON_PATH = path.join(OUTPUT_DIR, "supporters_events.json");
 
 // テスト用の設定を修正
-const TEST_MODE = true; // テストモードのフラグ (trueであることを確認)
-const TEST_EVENT_LIMIT = 3; // ★★★ テスト時の件数制限を3に設定 ★★★
-const INCLUDE_DETAIL_PAGES = true; // 詳細ページも取得するかどうか (必要に応じてtrue/falseを設定)
+const TEST_MODE = false; // ★★★ デバッグモードを解除 ★★★
+const TEST_EVENT_LIMIT = 3; // TEST_MODE = false の場合は使用されない
+const INCLUDE_DETAIL_PAGES = true; // 詳細ページも取得する
 
 // サーバー負荷軽減のための待機時間設定（ミリ秒）
 const RATE_LIMIT_DELAYS = {
@@ -300,20 +300,47 @@ async function getEventDetailUrls(
   eventCount: number // このeventCountは処理対象の最大件数として利用
 ): Promise<string[]> {
   const eventUrls: string[] = [];
+  const eventListPageUrl = "https://talent.supporterz.jp/events/";
 
   console.log(`📖 ${eventCount}件のイベント詳細URLを取得します...`);
 
   try {
-    // ループ内で毎回ボタンを取得するため、初期のボタン取得は件数確認のみに利用
+    // 初回: イベント一覧ページに移動し、全スクロール
+    console.log(`🔄 イベント一覧ページに移動: ${eventListPageUrl}`);
+    await page.goto(eventListPageUrl, { waitUntil: "networkidle2" });
+    await sleepWithDelay(RATE_LIMIT_DELAYS.INITIAL_PAGE_LOAD);
+
+    console.log("📜 ページ全体を初回スクロールします...");
+    await page.evaluate(async () => {
+      await new Promise<void>((resolve) => {
+        let totalHeight = 0;
+        const distance = 200; // スクロール距離を少し増やす
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          window.scrollBy(0, distance);
+          totalHeight += distance;
+          if (totalHeight >= scrollHeight) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 150); // スクロール間隔も調整
+      });
+    });
+    console.log("📜 ページ全体の初回スクロールが完了しました。");
+    await sleepWithDelay({ min: 4000, max: 6000 }); // スクロール後のコンテンツ読み込み待機
+
     const initialEventButtons = await page.$$(
       'button.MuiButtonBase-root[data-gtm-click="events"]'
     );
     console.log(
-      `${initialEventButtons.length}個のイベントボタンを初回確認しました`
+      `${initialEventButtons.length}個のイベントボタンを初回確認しました（スクロール後）。`
     );
 
-    // 実際に処理するイベント数を決定 (指定されたeventCountと実際のボタン数の少ない方)
-    const targetProcessCount = Math.min(initialEventButtons.length, eventCount);
+    const targetProcessCount = TEST_MODE
+      ? Math.min(initialEventButtons.length, TEST_EVENT_LIMIT)
+      : initialEventButtons.length;
+
+    console.log(`🔄 ${targetProcessCount}件のイベントを処理します。`);
 
     for (let i = 0; i < targetProcessCount; i++) {
       try {
@@ -321,7 +348,36 @@ async function getEventDetailUrls(
           `🔍 イベント ${i + 1}/${targetProcessCount} の詳細URLを取得中...`
         );
 
-        // ★★★ 修正点: ループの各反復でボタンを再取得 ★★★
+        // ★★★ 変更点: ループの各反復で、一覧ページを再読み込みし、再スクロールする ★★★
+        if (i > 0) {
+          // 最初のイベント以外の場合
+          console.log(`🔄 イベント一覧ページに再移動: ${eventListPageUrl}`);
+          await page.goto(eventListPageUrl, { waitUntil: "networkidle2" });
+          await sleepWithDelay(RATE_LIMIT_DELAYS.PAGE_NAVIGATION);
+
+          console.log(
+            `📜 再度ページ全体をスクロールします... (イベント ${i + 1})`
+          );
+          await page.evaluate(async () => {
+            await new Promise<void>((resolve) => {
+              let totalHeight = 0;
+              const distance = 200;
+              const timer = setInterval(() => {
+                const scrollHeight = document.body.scrollHeight;
+                window.scrollBy(0, distance);
+                totalHeight += distance;
+                if (totalHeight >= scrollHeight) {
+                  clearInterval(timer);
+                  resolve();
+                }
+              }, 150);
+            });
+          });
+          console.log(`📜 再スクロール完了 (イベント ${i + 1})`);
+          await sleepWithDelay({ min: 4000, max: 6000 });
+        }
+        // ★★★ 変更点ここまで ★★★
+
         const eventButtonsOnPage = await page.$$(
           'button.MuiButtonBase-root[data-gtm-click="events"]'
         );
@@ -330,116 +386,89 @@ async function getEventDetailUrls(
           console.warn(
             `⚠️ イベントボタン ${
               i + 1
-            } がページ上で見つかりません。スキップします。`
+            } がページ上で見つかりません。スキップします。(インデックス: ${i}, 発見ボタン数: ${
+              eventButtonsOnPage.length
+            })`
           );
           eventUrls.push(
-            `https://talent.supporterz.jp/events/error_button_not_found_${
+            `https://talent.supporterz.jp/events/error_button_not_found_at_index_${
               i + 1
             }`
           );
-          continue; // 次のイベントへ
+          continue;
         }
         const buttonToClick = eventButtonsOnPage[i];
-        // ★★★ 修正点ここまで ★★★
 
-        // 現在のページのURLを記録
         const originalUrl = page.url();
-
-        // ページ遷移を待機するPromiseを設定
         const navigationPromise = page
           .waitForNavigation({
             waitUntil: "networkidle2",
-            timeout: 15000, // タイムアウトを15秒に設定
+            timeout: 20000, // タイムアウトを延長
           })
-          .catch(() => null); // タイムアウトの場合はnullを返す
+          .catch(() => null);
 
-        // ボタンをクリック
         await buttonToClick.click();
-
-        // クリック後の待機（負荷軽減）
         await sleepWithDelay(RATE_LIMIT_DELAYS.AFTER_CLICK);
 
-        // 現在のURLを取得
         const currentUrl = page.url();
 
         if (
           currentUrl !== originalUrl &&
-          currentUrl !== "https://talent.supporterz.jp/events/" &&
-          !currentUrl.includes("about:blank") // about:blankを除外
+          currentUrl !== eventListPageUrl &&
+          !currentUrl.includes("about:blank")
         ) {
-          // ページが遷移した場合
           eventUrls.push(currentUrl);
           console.log(`✅ 詳細URL取得成功: ${currentUrl}`);
-
-          // 元のページに戻る
-          console.log("⏪ 元のイベント一覧ページに戻ります...");
-          await page.goBack({ waitUntil: "networkidle2", timeout: 10000 });
-          await sleepWithDelay(RATE_LIMIT_DELAYS.PAGE_NAVIGATION); // ページ遷移後の待機
+          // 詳細ページに遷移したので、次のループで一覧ページに戻る
         } else {
-          // ページが遷移しなかった場合、新しいタブを確認
           const pages = await browser.pages();
           if (pages.length > 1) {
-            const newPage = pages[pages.length - 1]; // 最後に追加されたページを新しいタブと仮定
+            const newPage = pages[pages.length - 1];
             const newUrl = newPage.url();
-
-            if (newUrl && newUrl !== "about:blank") {
+            if (
+              newUrl &&
+              newUrl !== "about:blank" &&
+              newUrl !== eventListPageUrl
+            ) {
               eventUrls.push(newUrl);
               console.log(`✅ 詳細URL取得成功（新しいタブ）: ${newUrl}`);
               await newPage.close();
               console.log("📑 新しいタブを閉じました。");
             } else {
-              console.warn("⚠️ 新しいタブのURLが無効でした。スキップします。");
+              console.warn(
+                `⚠️ 新しいタブのURLが無効でした (${newUrl})。スキップします。`
+              );
               eventUrls.push(
                 `https://talent.supporterz.jp/events/error_new_tab_invalid_url_${
                   i + 1
                 }`
               );
-              if (newPage && !newPage.isClosed()) {
-                await newPage.close();
-              }
+              if (newPage && !newPage.isClosed()) await newPage.close();
             }
           } else {
-            // フォールバック: 推測URLを使用
-            const fallbackUrl = `https://talent.supporterz.jp/events/fallback_navigation_failed_${
+            const fallbackUrl = `https://talent.supporterz.jp/events/error_navigation_failed_${
               i + 1
             }`;
             eventUrls.push(fallbackUrl);
-            console.log(
+            console.warn(
               `⚠️ ナビゲーションに失敗。フォールバックURL使用: ${fallbackUrl}`
             );
           }
         }
 
-        // クリック間の待機時間（負荷軽減）
         if (i < targetProcessCount - 1) {
           await sleepWithDelay(RATE_LIMIT_DELAYS.BETWEEN_CLICKS);
         }
-      } catch (error) {
-        console.error(`❌ イベント ${i + 1} の処理中にエラー:`, error);
-        const fallbackErrorUrl = `https://talent.supporterz.jp/events/error_processing_${
-          i + 1
-        }`;
-        eventUrls.push(fallbackErrorUrl);
-        // エラー発生時も、次のイベント処理のために一覧ページに戻る試み
-        if (page.url() !== "https://talent.supporterz.jp/events/") {
-          try {
-            console.log(
-              "⏪ エラー発生のため、元のイベント一覧ページに戻る試み..."
-            );
-            await page.goto("https://talent.supporterz.jp/events/", {
-              waitUntil: "networkidle2",
-              timeout: 10000,
-            });
-            await sleepWithDelay(RATE_LIMIT_DELAYS.PAGE_NAVIGATION);
-          } catch (navError) {
-            console.error("❌ 元のページへの復帰に失敗:", navError);
-            // これ以上処理を継続できない場合はループを抜けることも検討
-          }
-        }
+      } catch (error: any) {
+        console.error(`❌ イベント ${i + 1} の処理中にエラー:`, error.message);
+        eventUrls.push(
+          `https://talent.supporterz.jp/events/error_processing_event_${i + 1}`
+        );
+        // エラー発生時も、次のループで一覧ページが再読み込みされる
       }
     }
-  } catch (error) {
-    console.error("❌ イベントURL取得中に致命的なエラー:", error);
+  } catch (error: any) {
+    console.error("❌ イベントURL取得中に致命的なエラー:", error.message);
   }
 
   console.log(
@@ -640,7 +669,7 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
     // 初期ページロード後の待機（負荷軽減）
     await sleepWithDelay(RATE_LIMIT_DELAYS.INITIAL_PAGE_LOAD);
 
-    // 1. イベントの基本情報を取得
+    // ★★★ 手順1: イベントの基本情報を取得 ★★★
     console.log("📋 イベント基本情報を取得中...");
     const eventsData = await page.evaluate(
       (testLimit) => {
@@ -791,7 +820,7 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
 
     console.log(`✅ ${eventsData.length}件の基本情報を取得しました`);
 
-    // 2. 詳細ページのURL取得（クリックベース）
+    // ★★★ 手順2: 詳細ページURLを取得 ★★★
     if (INCLUDE_DETAIL_PAGES && eventsData.length > 0) {
       console.log("📖 詳細ページのURLを取得します...");
       const eventDetailUrls = await getEventDetailUrls(
@@ -809,7 +838,7 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
         eventsData[i].eventUrl = eventDetailUrls[i];
       }
 
-      // 3. 詳細ページのスクレイピング
+      // ★★★ 手順3: 詳細ページをスクレイピング（最重要） ★★★
       console.log("📖 詳細ページの情報を取得します...");
       let detailPage: Page | null = null;
 
@@ -830,6 +859,9 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
           continue;
         }
 
+        console.log(
+          ` (${i + 1}/${eventsData.length}) 詳細ページ処理中: ${url}`
+        );
         try {
           if (!detailPage || detailPage.isClosed()) {
             detailPage = await browser.newPage();
@@ -848,6 +880,11 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
             eventsData[i].fullPageText || "(fullPageText not found or empty)"
           );
           console.log(`--- End of Full Page Text ---`);
+
+          // 負荷軽減のため待機
+          if (i < eventsData.length - 1) {
+            await sleepWithDelay(RATE_LIMIT_DELAYS.DETAIL_PAGE_ACCESS);
+          }
         } catch (e: any) {
           console.error(`❌ 詳細情報取得エラー (${url}): ${e.message}`);
           scrapeErrors.push(
@@ -863,11 +900,12 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
       }
     }
 
-    // 4. 会社名処理
+    // ★★★ 手順4: 会社情報をDBに登録 ★★★
     const companyNames = Array.from(
       new Set(eventsData.map((event) => event.companyName))
     );
-    console.log("Company Names:", companyNames);
+    console.log("Company Names:");
+    console.log(companyNames);
 
     for (const companyName of companyNames) {
       const currentCompanyName = companyName || "Unknown Company";
@@ -879,7 +917,7 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
     }
     console.log("✅ 会社名の登録を完了しました");
 
-    // 5. eventsDataに組織IDを追加
+    // eventsDataに該当する組織を追加する
     const organizations = await prisma.organization.findMany();
     for (const event of eventsData) {
       const organization = organizations.find(
@@ -890,51 +928,39 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
       }
     }
 
-    // 6. 日付フォーマット処理
+    // event.dateをフォーマットする
     for (const event of eventsData) {
       try {
-        // event.date が string 型であることを確認
         if (typeof event.date === "string") {
           const originalDateString = event.date;
           const parts = originalDateString.split(/,|~/);
           let dateStrToParse = parts[parts.length - 1].trim();
-
-          // 曜日部分 (例: "(金)") を削除
-          dateStrToParse = dateStrToParse.replace(/\s*\(.\)$/, ""); // e.g., "5月30日"
+          dateStrToParse = dateStrToParse.replace(/\s*\(.\)$/, "");
 
           const match = dateStrToParse.match(/(\d+)月(\d+)日/);
-
           if (match) {
             const month = parseInt(match[1], 10);
             const day = parseInt(match[2], 10);
-            const currentYear = new Date().getFullYear(); // 現在の年を使用
-
-            // JavaScriptの月は0から始まるため、1を引く
+            const currentYear = new Date().getFullYear();
             const jsMonth = month - 1;
-
-            // event.date に ISO 8601 形式の文字列を代入する (時間は00:00:00Zとする)
             const formattedDate = new Date(currentYear, jsMonth, day);
             event.date = formattedDate.toISOString();
           } else {
             console.warn(
-              `[日付フォーマット警告] イベント「${event.title}」(元の日付:「${originalDateString}」) の日付形式が予期したパターンと一致しませんでした。`
+              `[日付フォーマット警告] イベント「${event.title}」の日付形式が予期したパターンと一致しません。`
             );
-            // パターンに一致しない場合は元の値を保持するか、エラーとして扱うか、または特定の値（例: 'INVALID_DATE'）を設定
-            // event.date = 'INVALID_DATE'; // または元の値を維持
           }
         } else {
           console.warn(
-            `[日付未定義警告] イベント「${event.title}」に日付情報 (event.date) がありません。スキップします。`
+            `[日付未定義警告] イベント「${event.title}」に日付情報がありません。`
           );
-          // 日付がない場合のフォールバック処理 (例: 'NO_DATE_PROVIDED')
-          // event.date = 'NO_DATE_PROVIDED'; // または処理をスキップ
         }
       } catch (error) {
-        console.error(`❌ 詳細情報取得エラー (${event.title}):`, error);
+        console.error(`❌ 日付フォーマットエラー (${event.title}):`, error);
       }
     }
 
-    // 7. DB処理
+    // ★★★ 手順5: イベントをDBに保存 ★★★
     const existingDbEvents = await prisma.event.findMany({
       include: {
         Organization: true,
@@ -967,35 +993,10 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
               event.title || "unknown"
             }`;
 
-          // ★★★ DB保存直前のログを強化 ★★★
+          console.log(`[DB保存処理] イベント: "${event.title}"`);
           console.log(
-            `[DB保存処理] イベント: "${event.title || "タイトル不明"}"`
+            `  -> Full Page Text Length: ${descriptionToSave.length}`
           );
-          console.log(`  -> detailUrlToSave: ${detailUrlToSave}`);
-          console.log(
-            `  -> descriptionToSave length: ${descriptionToSave.length}`
-          );
-          // console.log(`  -> descriptionToSave (first 50): ${descriptionToSave.substring(0,50)}`);
-
-          // ターミナルへの出力処理を追加
-          console.log("--- Saving to DB ---");
-          console.log(`Title: ${event.title || "No Title Provided"}`);
-          console.log(`Original Event URL: ${event.eventUrl}`);
-          console.log(`Detail URL for DB: ${detailUrlToSave}`);
-          console.log(
-            `Description for DB (first 100 chars): ${(
-              event.fullPageText || ""
-            ).substring(0, 100)}...`
-          );
-          console.log(
-            `Full Page Text Length: ${event.fullPageText?.length || 0}`
-          );
-          console.log(`Event Date: ${event.date}`);
-          console.log(`Start Time: ${startTimeValue}`);
-          console.log(`Venue: ${event.eventFormat}`);
-          console.log(`Organization ID: ${event.organizationId}`);
-          console.log(`Image URL: ${event.thumbnailUrl}`);
-          console.log("--- End Saving to DB ---");
 
           await prisma.event.create({
             data: {
@@ -1012,19 +1013,11 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
               detailUrl: detailUrlToSave,
             },
           });
-        } else {
-          console.warn(
-            `[イベント作成スキップ] イベント「${
-              event.title || "タイトル不明"
-            }」には有効な organizationId または date がないため。orgId: ${
-              event.organizationId
-            }, date: ${event.date}`
-          );
         }
       }
     }
 
-    // 8. 最終データ保存処理
+    // ★★★ 手順6: ファイル保存処理 ★★★
     const endTime = Date.now();
     const summary = {
       totalEvents: eventsData.length,
@@ -1041,6 +1034,10 @@ export async function scrapeSupportersEvents(): Promise<SupporterzEventInfo[]> {
 
     console.log("💾 データ保存処理を開始します...");
     await saveAllScrapedData(eventsData as SupporterzEventInfo[], summary);
+
+    console.log("--- All Scraped Events Data (JSON) ---");
+    console.log(JSON.stringify(eventsData, null, 2));
+    console.log("----------------------------------------");
 
     return eventsData as SupporterzEventInfo[];
   } catch (error) {
