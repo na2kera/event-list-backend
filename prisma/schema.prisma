@@ -73,6 +73,7 @@ model Event {
   EventGoal      EventGoal[]
   EventSkill     EventSkill[]
   EventSpeaker   EventSpeaker[]
+  embedding      Unsupported("vector(1536)")?
 
   @@index([organizationId])
 }
