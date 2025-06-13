@@ -1,4 +1,8 @@
 import fetchFiveEventData from "./fetchFiveEventData";
+import { cosineSimilarityKeyphraseExtractor } from "./keyphrase_method/cosine-similarity-library";
+import { extractKeyphrasesWithMultipartiteRank } from "./keyphrase_method/multipartite-rank-library";
+import { textrankKeyphraseExtractor } from "./keyphrase_method/textrank-library";
+import tfidfKeyphraseExtractor from "./keyphrase_method/tf-idf-library";
 import { keywordExtractorMethod } from "./keyword_method/keyword-extractor-library";
 import { textrankKeywordExtractor } from "./keyword_method/textrank-library";
 import { tfidfKeywordExtractor } from "./keyword_method/tf-idf-library";
@@ -46,28 +50,51 @@ async function extractKeywordsAndKeyphrases() {
   //descriptionを入れたらキーワードorキーセンテンスを返す配列を戻り値とする関数を指定
   for (const [index, description] of descriptions.entries()) {
     if (description) {
-      // keyword-extractorの結果
+      // // keyword-extractorの結果
       // const keywordArray = keywordExtractorMethod(description);
       // console.log(
       //   `イベント${index + 1}のキーワード(keyword-extractor):`,
       //   keywordArray
       // );
-      // TF-IDFの結果（awaitを追加）
+      // // TF-IDFの結果（awaitを追加）
       // const tfidfArray = await tfidfKeywordExtractor(description);
       // console.log(`イベント${index + 1}のキーワード(TF-IDF):`, tfidfArray);
       // console.log("---");
-      // TextRankの結果
+      // // TextRankの結果;
       // const textrankArray = await textrankKeywordExtractor(description);
       // console.log(`イベント${index + 1}のキーワード(TextRank):`, textrankArray);
       // console.log("---");
-
-      // TopicRankの結果
-      const topicrankArray = await topicrankKeywordExtractor(description);
-      console.log(
-        `イベント${index + 1}のキーワード(TopicRank):`,
-        topicrankArray
-      );
-      console.log("---");
+      // // TopicRankの結果;
+      // const topicrankArray = await topicrankKeywordExtractor(description);
+      // console.log(
+      //   `イベント${index + 1}のキーワード(TopicRank):`,
+      //   topicrankArray
+      // );
+      // console.log("---");
+      // //textrank-libraryのキーセンテンス;
+      // const textrankArray = await textrankKeyphraseExtractor(description);
+      // console.log(`イベント${index + 1}のキーワード(TextRank):`, textrankArray);
+      // console.log("---");
+      // //cosine-similarity-libraryのキーセンテンス;
+      // const cosineArray = await cosineSimilarityKeyphraseExtractor(description);
+      // console.log(
+      //   `イベント${index + 1}のキーワード(Cosine Similarity):`,
+      //   cosineArray
+      // );
+      // console.log("---");
+      // //tf-idf-libraryのキーセンテンス;
+      // const tfidfArray = await tfidfKeyphraseExtractor(description);
+      // console.log(`イベント${index + 1}のキーワード(TF-IDF):`, tfidfArray);
+      // console.log("---");
+      // //multipartite-rank-libraryのキーセンテンス;
+      // const multipartiteArray = await extractKeyphrasesWithMultipartiteRank(
+      //   description
+      // );
+      // console.log(
+      //   `イベント${index + 1}のキーワード(Multipartite Rank):`,
+      //   multipartiteArray
+      // );
+      // console.log("---");
     }
   }
 }
