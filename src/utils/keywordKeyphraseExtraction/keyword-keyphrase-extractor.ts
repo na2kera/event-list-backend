@@ -1,5 +1,6 @@
 import fetchFiveEventData from "./fetchFiveEventData";
 import { keywordExtractorMethod } from "./keyword_method/keyword-extractor-library";
+import { tfidfKeywordExtractor } from "./keyword_method/tf-idf-library";
 
 // 非同期関数として実装
 async function extractKeywordsAndKeyphrases() {
@@ -41,12 +42,22 @@ async function extractKeywordsAndKeyphrases() {
   ];
 
   //descriptionを入れたらキーワードorキーセンテンスを返す配列を戻り値とする関数を指定
-  descriptions.forEach((description, index) => {
+  for (const [index, description] of descriptions.entries()) {
     if (description) {
-      const keywordArray = keywordExtractorMethod(description);
-      console.log(`イベント${index + 1}のキーワード:`, keywordArray);
+      // keyword-extractorの結果
+      // const keywordArray = keywordExtractorMethod(description);
+      // console.log(
+      //   `イベント${index + 1}のキーワード(keyword-extractor):`,
+      //   keywordArray
+      // );
+
+      // TF-IDFの結果（awaitを追加）
+      const tfidfArray = await tfidfKeywordExtractor(description);
+      console.log(`イベント${index + 1}のキーワード(TF-IDF):`, tfidfArray);
+
+      console.log("---");
     }
-  });
+  }
 }
 
 // 関数を実行
