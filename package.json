@@ -25,6 +25,7 @@
     "natural": "^8.1.0",
     "puppeteer": "^24.8.2",
     "tiny-tfidf": "^0.9.1",
+    "ts-textrank": "^1.0.3",
     "zod": "^3.24.2"
   },
   "devDependencies": {
