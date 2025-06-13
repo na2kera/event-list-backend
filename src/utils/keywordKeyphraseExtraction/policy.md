@@ -56,4 +56,13 @@ keywordKeyphraseExtraction/
 
 現在想定されるファイルは以下の通りです。
 
-- `ts-textrank-keyphrase-library.ts`: (現在は空) `ts-textrank` ライブラリを利用したキーセンテンス抽出処理を実装予定。これは文単位のTextRankアルゴリズムを適用し、重要な文を抽出します。
+- `ts-textrank-keyphrase-library.ts`: (現在は空) `ts-textrank` ライブラリを利用したキーセンテンス抽出処理を実装予定。これは文単位の TextRank アルゴリズムを適用し、重要な文を抽出します。
+
+## 実行コマンド
+
+- やりたい手法をコメントアウト
+- 次のコマンドを実行
+
+```
+ npx ts-node src/utils/keywordKeyphraseExtraction/keyword-keyphrase-extractor.ts
+```
