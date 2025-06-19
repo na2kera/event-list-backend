@@ -1,7 +1,9 @@
 import fetchFiveEventData from "./fetchFiveEventData";
 import { cosineSimilarityKeyphraseExtractor } from "./keyphrase_method/cosine-similarity-library";
 import { extractKeyphrasesWithMultipartiteRank } from "./keyphrase_method/multipartite-rank-library";
-import { textrankKeyphraseExtractor } from "./keyphrase_method/textrank-library";
+import { textrankKeyphraseExtractor } from "./keyphrase_method/textrank-library-with-ai-v1";
+import { geminiSummaryToTextRankExtractor } from "./keyphrase_method/textrank-library-with-ai-v2";
+
 import tfidfKeyphraseExtractor from "./keyphrase_method/tf-idf-library";
 import { keywordExtractorMethod } from "./keyword_method/keyword-extractor-library";
 import { textrankKeywordExtractor } from "./keyword_method/textrank-library";
@@ -71,10 +73,6 @@ async function extractKeywordsAndKeyphrases() {
       //   topicrankArray
       // );
       // console.log("---");
-      // //textrank-libraryのキーセンテンス;
-      // const textrankArray = await textrankKeyphraseExtractor(description);
-      // console.log(`イベント${index + 1}のキーワード(TextRank):`, textrankArray);
-      // console.log("---");
       // //cosine-similarity-libraryのキーセンテンス;
       // const cosineArray = await cosineSimilarityKeyphraseExtractor(description);
       // console.log(
@@ -95,6 +93,19 @@ async function extractKeywordsAndKeyphrases() {
       //   multipartiteArray
       // );
       // console.log("---");
+      // //textrank-libraryのキーセンテンス;
+      // const textrankArray = await textrankKeyphraseExtractor(description);
+      // console.log(`イベント${index + 1}のキーワード(TextRank):`, textrankArray);
+      // console.log("---");
+      //gemini-summary-to-textrank-extractorのキーセンテンス;
+      const geminiSummaryArray = await geminiSummaryToTextRankExtractor(
+        description
+      );
+      console.log(
+        `イベント${index + 1}のキーワード(Gemini Summary to TextRank):`,
+        geminiSummaryArray
+      );
+      console.log("---");
     }
   }
 }
