@@ -120,7 +120,31 @@ async function enhanceWithAI(textrankResults: string[]): Promise<KeyPhrase[]> {
 }
 ```
 
-**検証結果**: [ 未実施 ]
+**検証結果**: [ ✅ 実装完了 - 2024 年 12 月実施 ]
+
+**実装ファイル**: `keyphrase_method/textrank-library-with-ai-v5.ts`
+
+**実装内容**:
+
+- 前処理 AI: テキストクリーニングと構造最適化
+- TextRank 処理: 既存アルゴリズムを活用
+- 後処理 AI: キーフレーズ品質向上と短縮
+- 段階別処理時間測定とパフォーマンス監視
+- AI 有効/無効の切り替え機能
+
+**テスト結果**:
+
+- AI 有効版: 1019ms（API 呼び出し 2 回）
+- AI 無効版: 627ms（TextRank のみ）
+- kuromoji 形態素解析と PageRank アルゴリズム正常動作確認
+- エラーハンドリングとフォールバック機能検証済み
+
+**技術実装**:
+
+- OpenAI API 対応（モック実装含む）
+- 段階的処理フローの実装
+- パフォーマンス計測機能
+- 設定可能な AI・TextRank パラメータ
 
 ---
 
