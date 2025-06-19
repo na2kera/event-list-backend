@@ -38,6 +38,8 @@ interface EnhancedKeyphrase {
   aiEnhanced: boolean;
   originalLength?: number;
   originalRank?: number;
+  category?: "technology" | "skill" | "feature" | "other";
+  weightedScore?: number; // カテゴリ重み適用後のスコア
 }
 
 // AI精製設定インターフェース
@@ -46,9 +48,18 @@ interface AIRefinementConfig {
   timeoutMs: number;
   maxKeyphrases: number;
   maxLength: number; // 最大文字数
+  minLength: number; // 最小文字数
   preserveTechnicalTerms: boolean; // 技術用語保持
   targetStyle: "concise" | "detailed"; // 精製スタイル
   enableAI: boolean; // AI機能のON/OFF
+  enableDeduplication: boolean; // 重複排除機能
+  categoryWeights: {
+    // カテゴリ別重み調整
+    technology: number;
+    skill: number;
+    feature: number;
+  };
+  similarityThreshold: number; // 重複判定の類似度閾値
 }
 
 // TextRank設定インターフェース
@@ -73,15 +84,24 @@ const DEFAULT_CONFIG: TextRankConfig = {
   minSentenceLength: 10, // 10文字未満の文は除外
 };
 
-// AI精製のデフォルト設定
+// AI精製のデフォルト設定（v1最適化版）
 const DEFAULT_AI_CONFIG: AIRefinementConfig = {
   maxRetries: 3,
   timeoutMs: 8000,
-  maxKeyphrases: 8,
-  maxLength: 20,
+  maxKeyphrases: 6, // 8→6に削減（重複排除効果）
+  maxLength: 25, // 最適長さ上限
+  minLength: 8, // 最適長さ下限
   preserveTechnicalTerms: true,
   targetStyle: "concise",
   enableAI: true,
+  enableDeduplication: true, // 重複排除機能有効
+  categoryWeights: {
+    // カテゴリ別重み調整
+    technology: 1.2, // 技術要素重視
+    skill: 1.0, // スキル要素標準
+    feature: 0.8, // 特徴要素やや軽視
+  },
+  similarityThreshold: 0.7, // 70%以上の類似度で重複判定
 };
 
 /**
@@ -96,6 +116,245 @@ const initializeGeminiAPI = (): GoogleGenerativeAI => {
     genAI = new GoogleGenerativeAI(apiKey);
   }
   return genAI;
+};
+
+/**
+ * キーフレーズのカテゴリを自動検出
+ */
+const detectCategory = (
+  phrase: string
+): "technology" | "skill" | "feature" | "other" => {
+  const lowerPhrase = phrase.toLowerCase();
+
+  // 技術要素のキーワード
+  const technologyKeywords = [
+    "python",
+    "javascript",
+    "react",
+    "vue",
+    "angular",
+    "node",
+    "express",
+    "django",
+    "flask",
+    "spring",
+    "laravel",
+    "rails",
+    "php",
+    "java",
+    "c#",
+    "golang",
+    "rust",
+    "swift",
+    "kotlin",
+    "typescript",
+    "html",
+    "css",
+    "sql",
+    "mongodb",
+    "postgresql",
+    "mysql",
+    "redis",
+    "aws",
+    "azure",
+    "docker",
+    "kubernetes",
+    "git",
+    "github",
+    "api",
+    "rest",
+    "graphql",
+    "chatgpt",
+    "gpt",
+    "ai",
+    "openai",
+    "gemini",
+    "claude",
+    "ml",
+    "機械学習",
+    "vscode",
+    "vs",
+    "gmail",
+    "zoom",
+    "slack",
+    "figma",
+    "notion",
+    "if文",
+    "for文",
+    "関数",
+    "リスト",
+    "辞書",
+    "クラス",
+    "オブジェクト",
+  ];
+
+  // スキル要素のキーワード
+  const skillKeywords = [
+    "学習",
+    "習得",
+    "解説",
+    "解決",
+    "デバッグ",
+    "エラー",
+    "コード",
+    "プログラミング",
+    "コーディング",
+    "開発",
+    "実装",
+    "設計",
+    "構築",
+    "1行ずつ",
+    "共有",
+    "体験",
+    "実践",
+    "手法",
+    "方法",
+    "スキル",
+    "効率",
+    "最適化",
+    "リファクタリング",
+    "レビュー",
+    "テスト",
+  ];
+
+  // 特徴要素のキーワード
+  const featureKeywords = [
+    "講座",
+    "セミナー",
+    "ワークショップ",
+    "研修",
+    "勉強会",
+    "ハンズオン",
+    "初心者",
+    "中級者",
+    "上級者",
+    "未経験",
+    "入門",
+    "基礎",
+    "応用",
+    "オンライン",
+    "オフライン",
+    "対面",
+    "リモート",
+    "無料",
+    "有料",
+    "テックジム",
+    "アカデミー",
+    "スクール",
+    "ブートキャンプ",
+  ];
+
+  // カテゴリ判定
+  for (const keyword of technologyKeywords) {
+    if (lowerPhrase.includes(keyword)) return "technology";
+  }
+
+  for (const keyword of skillKeywords) {
+    if (lowerPhrase.includes(keyword)) return "skill";
+  }
+
+  for (const keyword of featureKeywords) {
+    if (lowerPhrase.includes(keyword)) return "feature";
+  }
+
+  return "other";
+};
+
+/**
+ * 文字列の類似度を計算（編集距離ベース）
+ */
+const calculateTextSimilarity = (str1: string, str2: string): number => {
+  const len1 = str1.length;
+  const len2 = str2.length;
+
+  if (len1 === 0 || len2 === 0) return 0;
+
+  // 正規化Levenshtein距離
+  const maxLen = Math.max(len1, len2);
+  const distance = levenshteinDistance(str1, str2);
+
+  return 1 - distance / maxLen;
+};
+
+/**
+ * Levenshtein距離の計算
+ */
+const levenshteinDistance = (str1: string, str2: string): number => {
+  const matrix = Array(str2.length + 1)
+    .fill(null)
+    .map(() => Array(str1.length + 1).fill(null));
+
+  for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+  for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+  for (let j = 1; j <= str2.length; j++) {
+    for (let i = 1; i <= str1.length; i++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j - 1][i] + 1,
+        matrix[j][i - 1] + 1,
+        matrix[j - 1][i - 1] + cost
+      );
+    }
+  }
+
+  return matrix[str2.length][str1.length];
+};
+
+/**
+ * 重複排除機能（類似度ベース）
+ */
+const removeDuplicates = (
+  keyphrases: EnhancedKeyphrase[],
+  config: AIRefinementConfig
+): EnhancedKeyphrase[] => {
+  if (!config.enableDeduplication) {
+    return keyphrases;
+  }
+
+  console.log("🔄 重複排除処理開始...");
+
+  const uniquePhrases: EnhancedKeyphrase[] = [];
+
+  for (const phrase of keyphrases) {
+    let isDuplicate = false;
+
+    for (const existing of uniquePhrases) {
+      const similarity = calculateTextSimilarity(
+        phrase.phrase.toLowerCase(),
+        existing.phrase.toLowerCase()
+      );
+
+      if (similarity >= config.similarityThreshold) {
+        isDuplicate = true;
+        console.log(
+          `🔍 重複検出: "${phrase.phrase}" ≈ "${
+            existing.phrase
+          }" (類似度: ${similarity.toFixed(3)})`
+        );
+
+        // より高いスコアの方を残す
+        if (
+          phrase.weightedScore &&
+          existing.weightedScore &&
+          phrase.weightedScore > existing.weightedScore
+        ) {
+          const index = uniquePhrases.indexOf(existing);
+          uniquePhrases[index] = phrase;
+        }
+        break;
+      }
+    }
+
+    if (!isDuplicate) {
+      uniquePhrases.push(phrase);
+    }
+  }
+
+  console.log(
+    `✅ 重複排除完了: ${keyphrases.length} → ${uniquePhrases.length}フレーズ`
+  );
+  return uniquePhrases;
 };
 
 /**
@@ -291,11 +550,12 @@ ${textRankResults.map((phrase, index) => `${index + 1}. ${phrase}`).join("\n")}
 
 【精製指示】
 1. **技術用語・フレームワーク名を最優先で保持**
-2. **${config.maxLength}文字以内に短縮**（重要度に応じて調整可）
+2. **${config.minLength}〜${config.maxLength}文字の範囲内に調整**
 3. **冗長な表現を削除**（「について学ぶ」「を開催します」等）
 4. **具体的なスキル・技術要素を抽出**
 5. **最大${config.maxKeyphrases}個まで厳選**
 6. **イベント推薦に有用な情報を優先**
+7. **重複する内容は避ける**
 
 【出力形式】（JSON形式で回答）
 {
@@ -353,25 +613,48 @@ const refineWithGemini = async (
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-    const refinedPhrases: EnhancedKeyphrase[] = parsed.refined_keyphrases.map(
-      (item: any, index: number) => ({
-        phrase: item.phrase,
-        score: item.score || 0.5,
-        confidence: Math.max(0.1, Math.min(1.0, item.score || 0.5)),
-        aiEnhanced: true,
-        originalLength: item.original_length,
-        originalRank: index,
-      })
-    );
+    let refinedPhrases: EnhancedKeyphrase[] = parsed.refined_keyphrases
+      .map((item: any, index: number) => {
+        const phrase = item.phrase;
+        const category = detectCategory(phrase);
+        const baseScore = item.score || 0.5;
+        const categoryWeight = config.categoryWeights[category] || 1.0;
+        const weightedScore = baseScore * categoryWeight;
 
-    // スコアでソート
-    refinedPhrases.sort((a, b) => b.score - a.score);
+        return {
+          phrase,
+          score: baseScore,
+          confidence: Math.max(0.1, Math.min(1.0, baseScore)),
+          aiEnhanced: true,
+          originalLength: item.original_length,
+          originalRank: index,
+          category,
+          weightedScore,
+        };
+      })
+      // 長さフィルタリング
+      .filter((item: EnhancedKeyphrase) => {
+        const length = item.phrase.length;
+        return length >= config.minLength && length <= config.maxLength;
+      });
+
+    // 重複排除
+    refinedPhrases = removeDuplicates(refinedPhrases, config);
+
+    // 重み付きスコアでソート
+    refinedPhrases.sort(
+      (a, b) => (b.weightedScore || 0) - (a.weightedScore || 0)
+    );
 
     console.log(`✅ AI精製完了: ${refinedPhrases.length}個のキーフレーズ`);
-    console.log(
-      "🔍 精製結果:",
-      refinedPhrases.map((p) => `${p.phrase} (${p.score})`)
-    );
+    console.log("🔍 精製結果:");
+    refinedPhrases.forEach((p) => {
+      console.log(
+        `  📋 "${p.phrase}" (${p.category}, score: ${p.score.toFixed(
+          3
+        )}, weighted: ${(p.weightedScore || 0).toFixed(3)})`
+      );
+    });
 
     return refinedPhrases.slice(0, config.maxKeyphrases);
   } catch (error) {
@@ -403,14 +686,39 @@ const applyAIRefinement = async (
       if (retryCount >= config.maxRetries) {
         console.log("🔄 AI精製失敗、TextRank結果にフォールバック");
 
-        // フォールバック：TextRank結果をそのまま返却
-        return textRankResults.map((phrase, index) => ({
-          phrase,
-          score: Math.max(0.1, 1.0 - index * 0.1),
-          confidence: 0.6,
-          aiEnhanced: false,
-          originalRank: index,
-        }));
+        // フォールバック：TextRank結果にカテゴリ検出と重み調整を適用
+        let fallbackPhrases: EnhancedKeyphrase[] = textRankResults
+          .map((phrase, index) => {
+            const category = detectCategory(phrase);
+            const baseScore = Math.max(0.1, 1.0 - index * 0.1);
+            const categoryWeight = config.categoryWeights[category] || 1.0;
+            const weightedScore = baseScore * categoryWeight;
+
+            return {
+              phrase,
+              score: baseScore,
+              confidence: 0.6,
+              aiEnhanced: false,
+              originalRank: index,
+              category,
+              weightedScore,
+            };
+          })
+          // 長さフィルタリング
+          .filter((item) => {
+            const length = item.phrase.length;
+            return length >= config.minLength && length <= config.maxLength;
+          });
+
+        // 重複排除
+        fallbackPhrases = removeDuplicates(fallbackPhrases, config);
+
+        // 重み付きスコアでソート
+        fallbackPhrases.sort(
+          (a, b) => (b.weightedScore || 0) - (a.weightedScore || 0)
+        );
+
+        return fallbackPhrases;
       } else {
         // 指数バックオフで待機
         await new Promise((resolve) =>
@@ -421,13 +729,38 @@ const applyAIRefinement = async (
   }
 
   // フォールバック（ここに到達することはないはずですが、安全のため）
-  return textRankResults.map((phrase, index) => ({
-    phrase,
-    score: Math.max(0.1, 1.0 - index * 0.1),
-    confidence: 0.6,
-    aiEnhanced: false,
-    originalRank: index,
-  }));
+  let finalFallbackPhrases: EnhancedKeyphrase[] = textRankResults
+    .map((phrase, index) => {
+      const category = detectCategory(phrase);
+      const baseScore = Math.max(0.1, 1.0 - index * 0.1);
+      const categoryWeight = config.categoryWeights[category] || 1.0;
+      const weightedScore = baseScore * categoryWeight;
+
+      return {
+        phrase,
+        score: baseScore,
+        confidence: 0.6,
+        aiEnhanced: false,
+        originalRank: index,
+        category,
+        weightedScore,
+      };
+    })
+    // 長さフィルタリング
+    .filter((item) => {
+      const length = item.phrase.length;
+      return length >= config.minLength && length <= config.maxLength;
+    });
+
+  // 重複排除
+  finalFallbackPhrases = removeDuplicates(finalFallbackPhrases, config);
+
+  // 重み付きスコアでソート
+  finalFallbackPhrases.sort(
+    (a, b) => (b.weightedScore || 0) - (a.weightedScore || 0)
+  );
+
+  return finalFallbackPhrases;
 };
 
 /**
@@ -535,7 +868,22 @@ export const textrankKeyphraseExtractor = async (
       console.log(
         `✅ TextRank + AI精製完了 (${processingTime}ms): ${finalResults.length}個のキーフレーズ`
       );
-      console.log("🎯 最終結果:", finalResults);
+      console.log("🎯 最終結果（カテゴリ別分析）:");
+
+      // カテゴリ別に整理して表示
+      const categoryCounts = { technology: 0, skill: 0, feature: 0, other: 0 };
+      enhancedResults.forEach((result) => {
+        const category = result.category || "other";
+        categoryCounts[category]++;
+        console.log(
+          `  🏷️ [${category.toUpperCase()}] "${
+            result.phrase
+          }" (重み付きスコア: ${(result.weightedScore || 0).toFixed(3)})`
+        );
+      });
+
+      console.log("📊 カテゴリ分布:", categoryCounts);
+      console.log("🎯 抽出されたキーフレーズ:", finalResults);
 
       return finalResults;
     } catch (aiError) {

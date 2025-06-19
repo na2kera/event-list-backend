@@ -100,74 +100,82 @@ async function extractKeywordsAndKeyphrases() {
       // const textrankArray = await textrankKeyphraseExtractor(description);
       // console.log(`イベント${index + 1}のキーワード(TextRank):`, textrankArray);
       // console.log("---");
-      //gemini-summary-to-textrank-extractorのキーセンテンス（アプローチ5: AI サマリー前処理型）;
-      const geminiSummaryArray = await geminiSummaryToTextRankExtractor(
-        description
-      );
-      console.log(
-        `イベント${index + 1}のアプローチ5（AI サマリー前処理型）結果:`,
-        geminiSummaryArray
-      );
-      console.log("---");
+      // //gemini-summary-to-textrank-extractorのキーセンテンス（アプローチ5: AI サマリー前処理型）;
+      // const geminiSummaryArray = await geminiSummaryToTextRankExtractor(
+      //   description
+      // );
+      // console.log(
+      //   `イベント${index + 1}のアプローチ5（AI サマリー前処理型）結果:`,
+      //   geminiSummaryArray
+      // );
+      // console.log("---");
 
-      //Gemini AI主導型抽出のキーセンテンス（アプローチ2: AI 主導型抽出）;
-      const aiDrivenResult = await aiDrivenKeyphraseExtractor(description);
-      console.log(
-        `イベント${index + 1}のアプローチ2（AI 主導型抽出）結果:`,
-        aiDrivenResult.map(
-          (p) =>
-            `${p.phrase} (${p.source}: ${p.score.toFixed(3)}) [${
-              p.category || "N/A"
-            }]`
-        )
-      );
-      console.log("---");
+      // //Gemini AI主導型抽出のキーセンテンス（アプローチ2: AI 主導型抽出）;
+      // const aiDrivenResult = await aiDrivenKeyphraseExtractor(description);
+      // console.log(
+      //   `イベント${index + 1}のアプローチ2（AI 主導型抽出）結果:`,
+      //   aiDrivenResult.map(
+      //     (p) =>
+      //       `${p.phrase} (${p.source}: ${p.score.toFixed(3)}) [${
+      //         p.category || "N/A"
+      //       }]`
+      //   )
+      // );
+      // console.log("---");
 
-      //ハイブリッド並列処理のキーセンテンス（アプローチ3: ハイブリッド並列処理）;
-      const hybridResult = await hybridKeyphraseExtractor(description);
-      console.log(
-        `イベント${index + 1}のアプローチ3（ハイブリッド並列処理）結果:`,
-        hybridResult.keyphrases.map(
-          (p) => `${p.text} (${p.source}: ${p.hybridScore.toFixed(3)})`
-        )
-      );
-      console.log(`処理時間: ${hybridResult.processingTime}ms`);
-      console.log(`信頼度: ${(hybridResult.confidence * 100).toFixed(1)}%`);
-      console.log("TextRank結果:", hybridResult.textRankResults);
-      console.log("AI結果:", hybridResult.aiResults);
-      console.log("---");
+      // //ハイブリッド並列処理のキーセンテンス（アプローチ3: ハイブリッド並列処理）;
+      // const hybridResult = await hybridKeyphraseExtractor(description);
+      // console.log(
+      //   `イベント${index + 1}のアプローチ3（ハイブリッド並列処理）結果:`,
+      //   hybridResult.keyphrases.map(
+      //     (p) => `${p.text} (${p.source}: ${p.hybridScore.toFixed(3)})`
+      //   )
+      // );
+      // console.log(`処理時間: ${hybridResult.processingTime}ms`);
+      // console.log(`信頼度: ${(hybridResult.confidence * 100).toFixed(1)}%`);
+      // console.log("TextRank結果:", hybridResult.textRankResults);
+      // console.log("AI結果:", hybridResult.aiResults);
+      // console.log("---");
 
-      //段階的AI強化のキーセンテンス（アプローチ4: 段階的 AI 強化）;
-      const stagedResult = await stagedAIEnhancement(description);
+      // //段階的AI強化のキーセンテンス（アプローチ4: 段階的 AI 強化）;
+      // const stagedResult = await stagedAIEnhancement(description);
+      // console.log(
+      //   `イベント${index + 1}のアプローチ4（段階的 AI 強化）結果:`,
+      //   stagedResult.finalKeyphrases
+      // );
+      // console.log(
+      //   `総処理時間: ${stagedResult.performanceMetrics.totalProcessingTime}ms`
+      // );
+      // console.log(
+      //   `前処理AI: ${stagedResult.performanceMetrics.preprocessingTime}ms`
+      // );
+      // console.log(
+      //   `TextRank: ${stagedResult.performanceMetrics.textrankTime}ms`
+      // );
+      // console.log(
+      //   `後処理AI: ${stagedResult.performanceMetrics.postprocessingTime}ms`
+      // );
+      // console.log(
+      //   `API呼び出し回数: ${stagedResult.performanceMetrics.aiApiCalls}回`
+      // );
+      // console.log("処理段階:");
+      // console.log(
+      //   "  前処理後:",
+      //   stagedResult.processStages.preprocessed.substring(0, 100) + "..."
+      // );
+      // console.log(
+      //   "  TextRank結果:",
+      //   stagedResult.processStages.textrankResults
+      // );
+      // console.log("  最終結果:", stagedResult.processStages.postprocessed);
+      // console.log("---");
+
+      //textrank-library-with-ai-v1のキーセンテンス（v1手法）;
+      const textrankArray = await textrankKeyphraseExtractor(description);
       console.log(
-        `イベント${index + 1}のアプローチ4（段階的 AI 強化）結果:`,
-        stagedResult.finalKeyphrases
+        `イベント${index + 1}のキーワード(TextRank v1):`,
+        textrankArray
       );
-      console.log(
-        `総処理時間: ${stagedResult.performanceMetrics.totalProcessingTime}ms`
-      );
-      console.log(
-        `前処理AI: ${stagedResult.performanceMetrics.preprocessingTime}ms`
-      );
-      console.log(
-        `TextRank: ${stagedResult.performanceMetrics.textrankTime}ms`
-      );
-      console.log(
-        `後処理AI: ${stagedResult.performanceMetrics.postprocessingTime}ms`
-      );
-      console.log(
-        `API呼び出し回数: ${stagedResult.performanceMetrics.aiApiCalls}回`
-      );
-      console.log("処理段階:");
-      console.log(
-        "  前処理後:",
-        stagedResult.processStages.preprocessed.substring(0, 100) + "..."
-      );
-      console.log(
-        "  TextRank結果:",
-        stagedResult.processStages.textrankResults
-      );
-      console.log("  最終結果:", stagedResult.processStages.postprocessed);
       console.log("---");
     }
   }
