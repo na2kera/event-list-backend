@@ -1,3 +1,10 @@
+// ファイルの最初に追加
+import dotenv from "dotenv";
+dotenv.config();
+
+// Gemini APIのimport追加
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
 // kuromoji.jsの型定義（既存ライブラリから流用）
 interface KuromojiToken {
   surface_form: string;
@@ -23,6 +30,27 @@ interface SentenceInfo {
   originalPosition: number;
 }
 
+// AI精製結果のインターフェース
+interface EnhancedKeyphrase {
+  phrase: string;
+  score: number;
+  confidence: number;
+  aiEnhanced: boolean;
+  originalLength?: number;
+  originalRank?: number;
+}
+
+// AI精製設定インターフェース
+interface AIRefinementConfig {
+  maxRetries: number;
+  timeoutMs: number;
+  maxKeyphrases: number;
+  maxLength: number; // 最大文字数
+  preserveTechnicalTerms: boolean; // 技術用語保持
+  targetStyle: "concise" | "detailed"; // 精製スタイル
+  enableAI: boolean; // AI機能のON/OFF
+}
+
 // TextRank設定インターフェース
 interface TextRankConfig {
   dampingFactor: number; // PageRankのダンピング係数
@@ -32,8 +60,9 @@ interface TextRankConfig {
   minSentenceLength: number; // 最小文字数制限
 }
 
-// グローバルにtokenizerを保持（初期化コストを削減）
+// グローバルにtokenizerとGemini APIを保持（初期化コストを削減）
 let tokenizer: KuromojiTokenizer | null = null;
+let genAI: GoogleGenerativeAI | null = null;
 
 // デフォルト設定（日本語最適化）
 const DEFAULT_CONFIG: TextRankConfig = {
@@ -42,6 +71,31 @@ const DEFAULT_CONFIG: TextRankConfig = {
   tolerance: 0.0001, // 収束判定値
   maxSentences: 10, // 最大10文まで
   minSentenceLength: 10, // 10文字未満の文は除外
+};
+
+// AI精製のデフォルト設定
+const DEFAULT_AI_CONFIG: AIRefinementConfig = {
+  maxRetries: 3,
+  timeoutMs: 8000,
+  maxKeyphrases: 8,
+  maxLength: 20,
+  preserveTechnicalTerms: true,
+  targetStyle: "concise",
+  enableAI: true,
+};
+
+/**
+ * Gemini API初期化
+ */
+const initializeGeminiAPI = (): GoogleGenerativeAI => {
+  if (!genAI) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY環境変数が設定されていません");
+    }
+    genAI = new GoogleGenerativeAI(apiKey);
+  }
+  return genAI;
 };
 
 /**
@@ -219,22 +273,192 @@ const runPageRank = (
 };
 
 /**
- * TextRankを使用したキーセンテンス抽出メイン関数
+ * AI精製用プロンプト生成
+ */
+const generateRefinementPrompt = (
+  originalText: string,
+  textRankResults: string[],
+  config: AIRefinementConfig
+): string => {
+  return `
+あなたは日本のIT・技術イベントの専門家です。以下のイベント説明文と、TextRankアルゴリズムで抽出されたキーセンテンスを分析し、イベント推薦システム向けの短縮キーフレーズに精製してください。
+
+【イベント説明文】
+${originalText.substring(0, 2000)}
+
+【TextRank抽出結果】
+${textRankResults.map((phrase, index) => `${index + 1}. ${phrase}`).join("\n")}
+
+【精製指示】
+1. **技術用語・フレームワーク名を最優先で保持**
+2. **${config.maxLength}文字以内に短縮**（重要度に応じて調整可）
+3. **冗長な表現を削除**（「について学ぶ」「を開催します」等）
+4. **具体的なスキル・技術要素を抽出**
+5. **最大${config.maxKeyphrases}個まで厳選**
+6. **イベント推薦に有用な情報を優先**
+
+【出力形式】（JSON形式で回答）
+{
+  "refined_keyphrases": [
+    {
+      "phrase": "精製後のキーフレーズ",
+      "score": 0.85,
+      "original_length": 50,
+      "refined_length": 15,
+      "reason": "精製理由"
+    }
+  ]
+}
+`;
+};
+
+/**
+ * Gemini APIでキーフレーズを精製
+ */
+const refineWithGemini = async (
+  originalText: string,
+  textRankResults: string[],
+  config: AIRefinementConfig
+): Promise<EnhancedKeyphrase[]> => {
+  try {
+    console.log("🤖 Gemini APIでキーフレーズ精製開始...");
+
+    const genAI = initializeGeminiAPI();
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+
+    const prompt = generateRefinementPrompt(
+      originalText,
+      textRankResults,
+      config
+    );
+
+    // タイムアウト制御
+    const refinePromise = model.generateContent(prompt);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error("AI API タイムアウト")),
+        config.timeoutMs
+      )
+    );
+
+    const result = (await Promise.race([refinePromise, timeoutPromise])) as any;
+    const responseText = result.response.text();
+
+    console.log("📝 Gemini API レスポンス受信");
+
+    // JSON解析
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("JSON形式のレスポンスが見つかりません");
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    const refinedPhrases: EnhancedKeyphrase[] = parsed.refined_keyphrases.map(
+      (item: any, index: number) => ({
+        phrase: item.phrase,
+        score: item.score || 0.5,
+        confidence: Math.max(0.1, Math.min(1.0, item.score || 0.5)),
+        aiEnhanced: true,
+        originalLength: item.original_length,
+        originalRank: index,
+      })
+    );
+
+    // スコアでソート
+    refinedPhrases.sort((a, b) => b.score - a.score);
+
+    console.log(`✅ AI精製完了: ${refinedPhrases.length}個のキーフレーズ`);
+    console.log(
+      "🔍 精製結果:",
+      refinedPhrases.map((p) => `${p.phrase} (${p.score})`)
+    );
+
+    return refinedPhrases.slice(0, config.maxKeyphrases);
+  } catch (error) {
+    console.error("❌ Gemini API エラー:", error);
+    throw error;
+  }
+};
+
+/**
+ * AI精製を適用（リトライ機能付き）
+ */
+const applyAIRefinement = async (
+  originalText: string,
+  textRankResults: string[],
+  config: AIRefinementConfig
+): Promise<EnhancedKeyphrase[]> => {
+  let retryCount = 0;
+
+  while (retryCount < config.maxRetries) {
+    try {
+      return await refineWithGemini(originalText, textRankResults, config);
+    } catch (error) {
+      retryCount++;
+      console.warn(
+        `⚠️ AI精製失敗 (${retryCount}/${config.maxRetries}):`,
+        error
+      );
+
+      if (retryCount >= config.maxRetries) {
+        console.log("🔄 AI精製失敗、TextRank結果にフォールバック");
+
+        // フォールバック：TextRank結果をそのまま返却
+        return textRankResults.map((phrase, index) => ({
+          phrase,
+          score: Math.max(0.1, 1.0 - index * 0.1),
+          confidence: 0.6,
+          aiEnhanced: false,
+          originalRank: index,
+        }));
+      } else {
+        // 指数バックオフで待機
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.pow(2, retryCount) * 1000)
+        );
+      }
+    }
+  }
+
+  // フォールバック（ここに到達することはないはずですが、安全のため）
+  return textRankResults.map((phrase, index) => ({
+    phrase,
+    score: Math.max(0.1, 1.0 - index * 0.1),
+    confidence: 0.6,
+    aiEnhanced: false,
+    originalRank: index,
+  }));
+};
+
+/**
+ * TextRankを使用したキーセンテンス抽出メイン関数（AI精製拡張版）
  * @param text 分析対象の文章
- * @returns 重要文の配列（重要度順）
+ * @param aiConfig AI精製設定（オプション）
+ * @returns 精製されたキーフレーズの配列
  */
 export const textrankKeyphraseExtractor = async (
-  text: string
+  text: string,
+  aiConfig: Partial<AIRefinementConfig> = {}
 ): Promise<string[]> => {
+  const startTime = Date.now();
+
   try {
-    console.log("\n🎯 TextRank キーセンテンス抽出開始");
+    console.log("\n🎯 TextRank + AI精製 キーセンテンス抽出開始");
 
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       console.log("⚠️ 入力テキストが無効です。");
       return [];
     }
 
-    // 1. 文分割
+    // AI設定をマージ
+    const finalAIConfig: AIRefinementConfig = {
+      ...DEFAULT_AI_CONFIG,
+      ...aiConfig,
+    };
+
+    // ===== 1. TextRank処理 =====
+
+    // 1-1. 文分割
     const rawSentences = splitIntoSentences(text);
 
     if (rawSentences.length < 2) {
@@ -244,7 +468,7 @@ export const textrankKeyphraseExtractor = async (
 
     console.log(`📊 ${rawSentences.length}文を分析します...`);
 
-    // 2. 各文を単語に分解
+    // 1-2. 各文を単語に分解
     const sentences: SentenceInfo[] = [];
     for (let i = 0; i < rawSentences.length; i++) {
       const words = await tokenizeSentence(rawSentences[i]);
@@ -264,18 +488,18 @@ export const textrankKeyphraseExtractor = async (
       return sentences.map((s) => s.text).slice(0, 5);
     }
 
-    // 3. 類似度行列を構築
+    // 1-3. 類似度行列を構築
     const similarityMatrix = buildSimilarityMatrix(sentences);
 
-    // 4. PageRankアルゴリズムを実行
+    // 1-4. PageRankアルゴリズムを実行
     const scores = runPageRank(similarityMatrix, DEFAULT_CONFIG);
 
-    // 5. スコアを文情報に反映
+    // 1-5. スコアを文情報に反映
     sentences.forEach((sentence, index) => {
       sentence.score = scores[index] || 0;
     });
 
-    // 6. スコア順にソートして上位を選択
+    // 1-6. スコア順にソートして上位を選択
     const rankedSentences = sentences
       .sort((a, b) => b.score - a.score)
       .slice(
@@ -283,15 +507,42 @@ export const textrankKeyphraseExtractor = async (
         Math.min(DEFAULT_CONFIG.maxSentences, Math.ceil(sentences.length * 0.4))
       );
 
-    // 7. 元の順序でソート（読みやすさのため）
-    const finalSentences = rankedSentences
+    // 1-7. 元の順序でソート（読みやすさのため）
+    const textRankResults = rankedSentences
       .sort((a, b) => a.originalPosition - b.originalPosition)
       .map((s) => s.text);
 
-    console.log(`🏆 TextRank抽出完了: ${finalSentences.length}文を抽出`);
-    console.log("📋 抽出された重要文:", finalSentences);
+    console.log(`🏆 TextRank抽出完了: ${textRankResults.length}文を抽出`);
+    console.log("📋 TextRank結果:", textRankResults);
 
-    return finalSentences;
+    // ===== 2. AI精製処理 =====
+
+    if (!finalAIConfig.enableAI) {
+      console.log("🔄 AI精製無効化：TextRank結果のみ返却");
+      return textRankResults;
+    }
+
+    try {
+      const enhancedResults = await applyAIRefinement(
+        text,
+        textRankResults,
+        finalAIConfig
+      );
+
+      const finalResults = enhancedResults.map((result) => result.phrase);
+
+      const processingTime = Date.now() - startTime;
+      console.log(
+        `✅ TextRank + AI精製完了 (${processingTime}ms): ${finalResults.length}個のキーフレーズ`
+      );
+      console.log("🎯 最終結果:", finalResults);
+
+      return finalResults;
+    } catch (aiError) {
+      console.error("❌ AI精製処理エラー:", aiError);
+      console.log("🔄 AI精製失敗：TextRank結果のみ返却");
+      return textRankResults;
+    }
   } catch (error) {
     console.error("❌ TextRank抽出処理で予期せぬエラー:", error);
 
@@ -307,15 +558,5 @@ export const textrankKeyphraseExtractor = async (
   }
 };
 
-interface EnhancedKeyPhrase {
-  text: string;
-  score: number;
-  enhanced: boolean; // AI精製フラグ
-  originalLength?: number; // 元の長さ
-}
-
-interface AIRefinementConfig {
-  maxLength: number; // 最大文字数
-  preserveTechnicalTerms: boolean; // 技術用語保持
-  targetStyle: "concise" | "detailed"; // 精製スタイル
-}
+// エクスポート型定義
+export type { EnhancedKeyphrase, AIRefinementConfig, TextRankConfig };
