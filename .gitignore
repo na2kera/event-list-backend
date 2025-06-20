@@ -51,3 +51,4 @@ prisma/*.db
 # Temporary files
 tmp/
 temp/ 
+test/

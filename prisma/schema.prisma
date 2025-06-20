@@ -67,6 +67,7 @@ model Event {
   difficulty     DifficultyLevel @default(FOR_EVERYONE)
   price          Int             @default(0)
   eventType      EventType       @default(WORKSHOP)
+  participantsCount Int          @default(0)  // 参加者数
   Bookmark       Bookmark[]
   Organization   Organization    @relation(fields: [organizationId], references: [id])
   EventCategory  EventCategory[]
