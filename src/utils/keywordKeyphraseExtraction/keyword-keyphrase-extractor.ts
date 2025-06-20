@@ -1,13 +1,13 @@
 import fetchFiveEventData from "./fetchFiveEventData";
-import { cosineSimilarityKeyphraseExtractor } from "./keyphrase_method/cosine-similarity-library";
-import { extractKeyphrasesWithMultipartiteRank } from "./keyphrase_method/multipartite-rank-library";
-import { textrankKeyphraseExtractor } from "./keyphrase_method/textrank-library-with-ai-v1";
-import { geminiSummaryToTextRankExtractor } from "./keyphrase_method/textrank-library-with-ai-v2";
-import { aiDrivenKeyphraseExtractor } from "./keyphrase_method/textrank-library-with-ai-v3";
-import { hybridKeyphraseExtractor } from "./keyphrase_method/textrank-library-with-ai-v4";
-import { stagedAIEnhancement } from "./keyphrase_method/textrank-library-with-ai-v5";
+import { cosineSimilarityKeyphraseExtractor } from "./keysentence_method/cosine-similarity-library";
+import { extractKeyphrasesWithMultipartiteRank } from "./keysentence_method/multipartite-rank-library";
+import { textrankKeyphraseExtractor } from "./keysentence_method/textrank-library-with-ai-v1";
+import { geminiSummaryToTextRankExtractor } from "./keysentence_method/textrank-library-with-ai-v2";
+import { aiDrivenKeyphraseExtractor } from "./keysentence_method/textrank-library-with-ai-v3";
+import { hybridKeyphraseExtractor } from "./keysentence_method/textrank-library-with-ai-v4";
+import { stagedAIEnhancement } from "./keysentence_method/textrank-library-with-ai-v5";
 
-import tfidfKeyphraseExtractor from "./keyphrase_method/tf-idf-library";
+import tfidfKeyphraseExtractor from "./keysentence_method/tf-idf-library";
 import { keywordExtractorMethod } from "./keyword_method/keyword-extractor-library";
 import { textrankKeywordExtractor } from "./keyword_method/textrank-library";
 import { tfidfKeywordExtractor } from "./keyword_method/tf-idf-library";
