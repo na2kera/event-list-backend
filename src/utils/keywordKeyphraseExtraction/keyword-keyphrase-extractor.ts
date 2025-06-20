@@ -2,6 +2,8 @@ import fetchFiveEventData from "./fetchFiveEventData";
 import { cosineSimilarityKeyphraseExtractor } from "./keysentence_method/cosine-similarity-library";
 import { extractKeyphrasesWithMultipartiteRank } from "./keysentence_method/multipartite-rank-library";
 import { textrankKeyphraseExtractor } from "./keysentence_method/textrank-library-with-ai-v1";
+import { textrankKeySentenceExtractor } from "./keysentence_method/textrank-library-with-ai-v1-2";
+import { textrankKeywordExtractor as textrankKeywordExtractorV3 } from "./keysentence_method/textrank-library-with-ai-v1-3";
 import { geminiSummaryToTextRankExtractor } from "./keysentence_method/textrank-library-with-ai-v2";
 import { aiDrivenKeyphraseExtractor } from "./keysentence_method/textrank-library-with-ai-v3";
 import { hybridKeyphraseExtractor } from "./keysentence_method/textrank-library-with-ai-v4";
@@ -175,6 +177,22 @@ async function extractKeywordsAndKeyphrases() {
       console.log(
         `イベント${index + 1}のキーワード(TextRank v1):`,
         textrankArray
+      );
+      console.log("---");
+
+      //textrank-library-with-ai-v1-2のキーセンテンス（v1-2手法：完全な文章生成）;
+      const keySentenceArray = await textrankKeySentenceExtractor(description);
+      console.log(
+        `イベント${index + 1}のキーセンテンス(TextRank v1-2):`,
+        keySentenceArray
+      );
+      console.log("---");
+
+      //textrank-library-with-ai-v1-3のキーセンテンス（v1-3手法：重要キーワード抽出）;
+      const keywords3 = await textrankKeywordExtractorV3(description);
+      console.log(
+        `イベント${index + 1}の重要キーワード(TextRank v1-3):`,
+        keywords3
       );
       console.log("---");
     }
