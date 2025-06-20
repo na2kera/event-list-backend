@@ -38,7 +38,7 @@ interface EnhancedKeyphrase {
   aiEnhanced: boolean;
   originalLength?: number;
   originalRank?: number;
-  category?: "technology" | "skill" | "feature" | "other";
+  category?: "technology" | "skill" | "feature" | "location" | "other";
   weightedScore?: number; // カテゴリ重み適用後のスコア
 }
 
@@ -58,6 +58,8 @@ interface AIRefinementConfig {
     technology: number;
     skill: number;
     feature: number;
+    location: number; // 開催地情報
+    other: number; // ノイズカテゴリ
   };
   similarityThreshold: number; // 重複判定の類似度閾値
 }
@@ -84,22 +86,23 @@ const DEFAULT_CONFIG: TextRankConfig = {
   minSentenceLength: 10, // 10文字未満の文は除外
 };
 
-// AI精製のデフォルト設定（v1最適化版）
+// AI精製のデフォルト設定（地名重視版）
 const DEFAULT_AI_CONFIG: AIRefinementConfig = {
   maxRetries: 3,
   timeoutMs: 8000,
-  maxKeyphrases: 6, // 8→6に削減（重複排除効果）
+  maxKeyphrases: 5, // 品質重視で5個に設定
   maxLength: 25, // 最適長さ上限
   minLength: 8, // 最適長さ下限
   preserveTechnicalTerms: true,
   targetStyle: "concise",
   enableAI: true,
-  enableDeduplication: true, // 重複排除機能有効
+  enableDeduplication: true,
   categoryWeights: {
-    // カテゴリ別重み調整
-    technology: 1.2, // 技術要素重視
+    location: 1.4, // 開催地情報を最重視
+    technology: 1.3, // 技術要素をさらに重視
     skill: 1.0, // スキル要素標準
-    feature: 0.8, // 特徴要素やや軽視
+    feature: 0.7, // 特徴要素軽視（ノイズが多いため）
+    other: 0.3, // ノイズカテゴリは大幅に軽視
   },
   similarityThreshold: 0.7, // 70%以上の類似度で重複判定
 };
@@ -123,62 +126,225 @@ const initializeGeminiAPI = (): GoogleGenerativeAI => {
  */
 const detectCategory = (
   phrase: string
-): "technology" | "skill" | "feature" | "other" => {
+): "technology" | "skill" | "feature" | "location" | "other" => {
   const lowerPhrase = phrase.toLowerCase();
 
-  // 技術要素のキーワード
+  // ノイズとなりやすいキーワード（開発ツール・準備ツール・事務的要素）
+  const noiseKeywords = [
+    "vscode",
+    "vs code",
+    "visual studio code",
+    "zoom",
+    "gmail",
+    "slack",
+    "notion",
+    "figma",
+    "pc",
+    "パソコン",
+    "インストール",
+    "ダウンロード",
+    "申し込み",
+    "案内",
+    "準備",
+    "用意",
+    "アカウント",
+    // 大学名・固有名詞
+    "早稲田大学",
+    "慶應大学",
+    "東京大学",
+    "大学",
+    "株式会社",
+    "有限会社",
+    "i-mode",
+    // 一般的すぎるツール名
+    "chrome",
+    "safari",
+    "firefox",
+    "excel",
+    "word",
+    "powerpoint",
+  ];
+
+  // ノイズ判定
+  for (const keyword of noiseKeywords) {
+    if (lowerPhrase.includes(keyword)) {
+      return "other"; // ノイズはotherカテゴリに分類
+    }
+  }
+
+  // 開催地・地名のキーワード（最優先）
+  const locationKeywords = [
+    // 都道府県
+    "北海道",
+    "青森",
+    "岩手",
+    "宮城",
+    "秋田",
+    "山形",
+    "福島",
+    "茨城",
+    "栃木",
+    "群馬",
+    "埼玉",
+    "千葉",
+    "東京",
+    "神奈川",
+    "新潟",
+    "富山",
+    "石川",
+    "福井",
+    "山梨",
+    "長野",
+    "岐阜",
+    "静岡",
+    "愛知",
+    "三重",
+    "滋賀",
+    "京都",
+    "大阪",
+    "兵庫",
+    "奈良",
+    "和歌山",
+    "鳥取",
+    "島根",
+    "岡山",
+    "広島",
+    "山口",
+    "徳島",
+    "香川",
+    "愛媛",
+    "高知",
+    "福岡",
+    "佐賀",
+    "長崎",
+    "熊本",
+    "大分",
+    "宮崎",
+    "鹿児島",
+    "沖縄",
+    // 主要都市・エリア
+    "札幌",
+    "仙台",
+    "名古屋",
+    "神戸",
+    "福岡市",
+    "横浜",
+    "川崎",
+    "渋谷",
+    "新宿",
+    "池袋",
+    "秋葉原",
+    "品川",
+    "丸の内",
+    "六本木",
+    "梅田",
+    "難波",
+    "天神",
+    "博多",
+    "中洲",
+    "栄",
+    "金山",
+    // 地域名
+    "関東",
+    "関西",
+    "東海",
+    "九州",
+    "北陸",
+    "中国",
+    "四国",
+    "東北",
+    "首都圏",
+    "近畿",
+    "中部",
+    "山陰",
+    "山陽",
+    // オンライン関連（除外用）
+    "オンライン",
+    "リモート",
+    "配信",
+    "ウェビナー",
+    "zoom開催",
+  ];
+
+  // オンライン除外キーワードをチェック（locationから除外）
+  const onlineKeywords = [
+    "オンライン",
+    "リモート",
+    "配信",
+    "ウェビナー",
+    "zoom開催",
+  ];
+  const isOnline = onlineKeywords.some((keyword) =>
+    lowerPhrase.includes(keyword)
+  );
+
+  // 地名判定（オンラインでない場合のみ）
+  if (!isOnline) {
+    for (const keyword of locationKeywords) {
+      if (lowerPhrase.includes(keyword)) return "location";
+    }
+  }
+
+  // 技術要素のキーワード（価値の高い技術のみ）
   const technologyKeywords = [
+    // プログラミング言語
     "python",
     "javascript",
-    "react",
-    "vue",
-    "angular",
-    "node",
-    "express",
-    "django",
-    "flask",
-    "spring",
-    "laravel",
-    "rails",
-    "php",
+    "typescript",
     "java",
     "c#",
     "golang",
     "rust",
     "swift",
     "kotlin",
-    "typescript",
-    "html",
-    "css",
-    "sql",
-    "mongodb",
+    "php",
+    "ruby",
+    "scala",
+    "dart",
+    "elixir",
+    // フレームワーク・ライブラリ
+    "react",
+    "vue",
+    "angular",
+    "svelte",
+    "next.js",
+    "nuxt.js",
+    "express",
+    "fastapi",
+    "django",
+    "flask",
+    "spring",
+    "laravel",
+    "rails",
+    // データベース・インフラ
     "postgresql",
     "mysql",
+    "mongodb",
     "redis",
+    "elasticsearch",
     "aws",
     "azure",
+    "gcp",
     "docker",
     "kubernetes",
-    "git",
-    "github",
-    "api",
-    "rest",
-    "graphql",
+    "terraform",
+    // AI・機械学習
     "chatgpt",
     "gpt",
-    "ai",
     "openai",
     "gemini",
     "claude",
-    "ml",
+    "ai",
     "機械学習",
-    "vscode",
-    "vs",
-    "gmail",
-    "zoom",
-    "slack",
-    "figma",
-    "notion",
+    "ml",
+    "llm",
+    // API・プロトコル
+    "api",
+    "rest",
+    "graphql",
+    "websocket",
+    "grpc",
+    // プログラミング概念
     "if文",
     "for文",
     "関数",
@@ -186,6 +352,10 @@ const detectCategory = (
     "辞書",
     "クラス",
     "オブジェクト",
+    "アルゴリズム",
+    "データ構造",
+    "非同期",
+    "並行処理",
   ];
 
   // スキル要素のキーワード
@@ -195,14 +365,13 @@ const detectCategory = (
     "解説",
     "解決",
     "デバッグ",
-    "エラー",
+    "エラー解決",
     "コード",
     "プログラミング",
     "コーディング",
     "開発",
     "実装",
     "設計",
-    "構築",
     "1行ずつ",
     "共有",
     "体験",
@@ -215,9 +384,13 @@ const detectCategory = (
     "リファクタリング",
     "レビュー",
     "テスト",
+    "ペアプログラミング",
+    "チーム開発",
+    "アジャイル",
+    "スクラム",
   ];
 
-  // 特徴要素のキーワード
+  // 特徴要素のキーワード（イベント形式・対象者）
   const featureKeywords = [
     "講座",
     "セミナー",
@@ -232,19 +405,22 @@ const detectCategory = (
     "入門",
     "基礎",
     "応用",
-    "オンライン",
     "オフライン",
     "対面",
-    "リモート",
     "無料",
     "有料",
     "テックジム",
     "アカデミー",
     "スクール",
     "ブートキャンプ",
+    "中学生",
+    "高校生",
+    "学生",
+    "社会人",
+    "シニア",
   ];
 
-  // カテゴリ判定
+  // カテゴリ判定（location → technology → skill → feature → other の優先順）
   for (const keyword of technologyKeywords) {
     if (lowerPhrase.includes(keyword)) return "technology";
   }
@@ -553,9 +729,22 @@ ${textRankResults.map((phrase, index) => `${index + 1}. ${phrase}`).join("\n")}
 2. **${config.minLength}〜${config.maxLength}文字の範囲内に調整**
 3. **冗長な表現を削除**（「について学ぶ」「を開催します」等）
 4. **具体的なスキル・技術要素を抽出**
-5. **最大${config.maxKeyphrases}個まで厳選**
+5. **最大${config.maxKeyphrases}個のキーフレーズを生成**
 6. **イベント推薦に有用な情報を優先**
-7. **重複する内容は避ける**
+7. **内容が大きく異なる限り、類似表現も許容**
+
+【重要な除外指示】
+❌ 以下の開発ツール・準備ツールは除外：
+- VSCode、Visual Studio Code、Zoom、Gmail、Slack等
+- PC、パソコン、インストール、ダウンロード等の準備要件
+- 大学名（早稲田大学、東京大学等）や古い技術名（i-mode等）
+- 一般的なブラウザ名（Chrome、Safari等）
+
+✅ 以下の価値ある情報を優先：
+- **開催地・会場情報（東京、大阪、渋谷、関東等）** ← 最重要
+- プログラミング言語・フレームワーク（Python、React等）
+- 技術概念・スキル（API、デバッグ、関数等）
+- 学習手法・教育メソッド（テックジム、実践学習等）
 
 【出力形式】（JSON形式で回答）
 {
@@ -618,7 +807,10 @@ const refineWithGemini = async (
         const phrase = item.phrase;
         const category = detectCategory(phrase);
         const baseScore = item.score || 0.5;
-        const categoryWeight = config.categoryWeights[category] || 1.0;
+        const categoryWeight =
+          config.categoryWeights[
+            category as keyof typeof config.categoryWeights
+          ] || 0.5;
         const weightedScore = baseScore * categoryWeight;
 
         return {
@@ -637,6 +829,15 @@ const refineWithGemini = async (
         const length = item.phrase.length;
         return length >= config.minLength && length <= config.maxLength;
       });
+
+    // ノイズフィルタリング（otherカテゴリの低スコアを除外）
+    refinedPhrases = refinedPhrases.filter((phrase) => {
+      if (phrase.category === "other" && (phrase.weightedScore || 0) < 0.5) {
+        console.log(`🗑️ ノイズ除外: "${phrase.phrase}"`);
+        return false;
+      }
+      return true;
+    });
 
     // 重複排除
     refinedPhrases = removeDuplicates(refinedPhrases, config);
@@ -691,7 +892,10 @@ const applyAIRefinement = async (
           .map((phrase, index) => {
             const category = detectCategory(phrase);
             const baseScore = Math.max(0.1, 1.0 - index * 0.1);
-            const categoryWeight = config.categoryWeights[category] || 1.0;
+            const categoryWeight =
+              config.categoryWeights[
+                category as keyof typeof config.categoryWeights
+              ] || 0.5;
             const weightedScore = baseScore * categoryWeight;
 
             return {
@@ -709,6 +913,18 @@ const applyAIRefinement = async (
             const length = item.phrase.length;
             return length >= config.minLength && length <= config.maxLength;
           });
+
+        // ノイズフィルタリング
+        fallbackPhrases = fallbackPhrases.filter((phrase) => {
+          if (
+            phrase.category === "other" &&
+            (phrase.weightedScore || 0) < 0.5
+          ) {
+            console.log(`🗑️ フォールバック時ノイズ除外: "${phrase.phrase}"`);
+            return false;
+          }
+          return true;
+        });
 
         // 重複排除
         fallbackPhrases = removeDuplicates(fallbackPhrases, config);
@@ -733,7 +949,10 @@ const applyAIRefinement = async (
     .map((phrase, index) => {
       const category = detectCategory(phrase);
       const baseScore = Math.max(0.1, 1.0 - index * 0.1);
-      const categoryWeight = config.categoryWeights[category] || 1.0;
+      const categoryWeight =
+        config.categoryWeights[
+          category as keyof typeof config.categoryWeights
+        ] || 0.5;
       const weightedScore = baseScore * categoryWeight;
 
       return {
@@ -751,6 +970,15 @@ const applyAIRefinement = async (
       const length = item.phrase.length;
       return length >= config.minLength && length <= config.maxLength;
     });
+
+  // ノイズフィルタリング
+  finalFallbackPhrases = finalFallbackPhrases.filter((phrase) => {
+    if (phrase.category === "other" && (phrase.weightedScore || 0) < 0.5) {
+      console.log(`🗑️ 最終フォールバック時ノイズ除外: "${phrase.phrase}"`);
+      return false;
+    }
+    return true;
+  });
 
   // 重複排除
   finalFallbackPhrases = removeDuplicates(finalFallbackPhrases, config);
@@ -871,7 +1099,13 @@ export const textrankKeyphraseExtractor = async (
       console.log("🎯 最終結果（カテゴリ別分析）:");
 
       // カテゴリ別に整理して表示
-      const categoryCounts = { technology: 0, skill: 0, feature: 0, other: 0 };
+      const categoryCounts = {
+        technology: 0,
+        skill: 0,
+        feature: 0,
+        location: 0,
+        other: 0,
+      };
       enhancedResults.forEach((result) => {
         const category = result.category || "other";
         categoryCounts[category]++;
