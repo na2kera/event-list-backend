@@ -98,8 +98,8 @@ const DEFAULT_AI_CONFIG: AIRefinementConfig = {
   enableAI: true,
   enableDeduplication: true,
   categoryWeights: {
-    location: 1.5, // 開催地情報を最重視
-    technology: 1.4, // 技術要素をさらに重視
+    location: 0.0, // 地名情報は完全除外
+    technology: 1.5, // 技術要素を最重視
     skill: 1.2, // スキル要素を向上
     feature: 0.9, // 特徴要素の重みを向上（除外されすぎを防ぐ）
     other: 0.5, // otherカテゴリの重みを向上（完全除外を防ぐ）
@@ -735,15 +735,15 @@ ${textRankResults.map((phrase, index) => `${index + 1}. ${phrase}`).join("\n")}
 8. **多様性を重視：技術・スキル・地域・形式など様々な角度から抽出**
 
 【重要な除外指示】
-❌ 以下の開発ツール・準備ツールは除外：
+❌ 以下の開発ツール・準備ツール・地名情報は除外：
 - VSCode、Visual Studio Code、Zoom、Gmail、Slack等
 - PC、パソコン、インストール、ダウンロード等の準備要件
 - 大学名（早稲田大学、東京大学等）や古い技術名（i-mode等）
 - 一般的なブラウザ名（Chrome、Safari等）
+- **開催地・地名情報（東京、大阪、渋谷、関東等）は技術的価値が低いため除外**
 
 ✅ 以下の価値ある情報を優先（多角的に抽出）：
-- **開催地・会場情報（東京、大阪、渋谷、関東等）** ← 最重要
-- **プログラミング言語・フレームワーク（Python、React等）**
+- **プログラミング言語・フレームワーク（Python、React等）** ← 最重要
 - **技術概念・スキル（API、デバッグ、関数等）**
 - **学習手法・教育メソッド（テックジム、実践学習等）**
 - **対象者・レベル（初心者、中級者、未経験者等）**
