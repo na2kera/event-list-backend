@@ -52,3 +52,6 @@ prisma/*.db
 tmp/
 temp/ 
 test/
+
+# Output directory
+output/

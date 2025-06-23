@@ -1,4 +1,6 @@
 import prisma from "../config/prisma";
+import { extractEventKeyData } from "./extractEventKeyData";
+import crypto from "crypto";
 import {
   Event,
   Category,
@@ -232,6 +234,10 @@ export const saveOrUpdateEvents = async (events: Event[]): Promise<Event[]> => {
       const results: Event[] = [];
 
       for (const event of events) {
+        // 説明文からキーデータ抽出
+        const { keywords, keyPhrases, keySentences } =
+          await extractEventKeyData(event.description || "");
+
         // イベントIDで既存のイベントを検索
         const existingEvent = await tx.event.findUnique({
           where: { id: event.id },
@@ -258,13 +264,22 @@ export const saveOrUpdateEvents = async (events: Event[]): Promise<Event[]> => {
               difficulty: event.difficulty,
               price: event.price,
               eventType: event.eventType,
+              keywords,
+              keyPhrases,
+              keySentences,
             },
           });
         } else {
           // 新規イベントを作成
           console.log(`新規イベント「${event.title}」を作成します`);
           savedEvent = await tx.event.create({
-            data: event,
+            data: {
+              ...event,
+              id: event.id ?? crypto.randomUUID(),
+              keywords,
+              keyPhrases,
+              keySentences,
+            },
           });
         }
 
