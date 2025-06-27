@@ -8,6 +8,7 @@ import userRoutes from "./routes/userRoutes";
 import lineRoutes from "./routes/lineRoutes";
 import categoryRoutes from "./routes/categoryRoutes";
 import bookmarkRoutes from "./routes/bookmarkRoutes";
+import recommendRoutes from "./routes/recommendRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 import { PrismaClient } from "@prisma/client";
 
@@ -81,6 +82,7 @@ app.use("/api/speakers", speakerRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/bookmarks", bookmarkRoutes);
+app.use("/api/recommend", recommendRoutes);
 app.use("/api/users", userRoutes);
 
 // Error handling

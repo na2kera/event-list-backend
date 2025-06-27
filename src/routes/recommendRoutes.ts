@@ -1,9 +1,12 @@
 import { Router } from "express";
-import { recommendEventsForUser } from "../controllers/recommendController";
+import {
+  recommendByUser,
+  recommendByTag,
+} from "../controllers/recommendController";
 
 const router = Router();
 
-// GET /api/recommend/:userId
-router.get("/:userId", recommendEventsForUser);
+router.post("/user", recommendByUser);
+router.post("/tag", recommendByTag);
 
 export default router;

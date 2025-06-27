@@ -1,30 +1,26 @@
 import { RequestHandler } from "express";
 import { getUserWithDetailsById } from "../utils/userUtils";
-import { getAllEvents } from "../utils/eventUtils";
+import { getFilteredEvents } from "../utils/eventUtils";
 import {
   recommendEventsWithKeyData,
-  EventKeyData,
   RecommendedEvent,
+  EventKeyData,
 } from "../utils/keyDataRecommendation";
 
 /**
- * GET /api/recommend/:userId
- * ユーザーの興味タグごとにイベントレコメンドを実行して返す API
- * 返却形式:
- * {
- *   tag: string;
- *   recommendations: RecommendedEvent[];
- * }[]
+ * POST /api/recommend/user
+ * body: { userId }
+ * ユーザーの興味タグごとにレコメンドを返す
  */
-export const recommendEventsForUser: RequestHandler = async (
-  req,
-  res,
-  next
-) => {
+export const recommendByUser: RequestHandler = async (req, res, next) => {
   try {
-    const { userId } = req.params;
+    const { userId } = req.body;
+    if (!userId) {
+      res.status(400).json({ message: "userId は必須です" });
+      return;
+    }
 
-    // ユーザー情報取得
+    // ユーザー取得
     const user = await getUserWithDetailsById(userId);
     if (!user) {
       res
@@ -33,20 +29,25 @@ export const recommendEventsForUser: RequestHandler = async (
       return;
     }
 
-    // 興味タグを取得 (string[] 想定)
     const tags: string[] = (user.tag as any) || [];
     if (tags.length === 0) {
-      res.status(200).json({
-        message: "興味タグが未設定のため、レコメンドできません。",
-        data: [],
-      });
+      res.status(200).json({ message: "興味タグが未設定", data: [] });
       return;
     }
 
-    // 全イベント取得 (keyPhrases / keySentences を含む)
-    const events = await getAllEvents(false); // relations 不要
+    // 場所・形式で直接DBクエリ
+    const locationRaw = (user.place || "").toString();
+    const locLower = locationRaw.toLowerCase();
+    const filterOpts: any = {};
+    if (locationRaw) {
+      if (locLower === "online") {
+        filterOpts.format = "ONLINE"; // Prisma enum への一致を想定
+      } else {
+        filterOpts.location = locationRaw;
+      }
+    }
 
-    // EventKeyData 形式に変換
+    const events = await getFilteredEvents(filterOpts);
     const eventKeyData: EventKeyData[] = events.map((ev: any) => ({
       id: ev.id,
       keyPhrases: ev.keyPhrases || [],
@@ -54,37 +55,93 @@ export const recommendEventsForUser: RequestHandler = async (
       ...ev,
     }));
 
-    // ------------- ユーザー所在地でフィルタリング -------------
-    const userPlace = (user.place || "").toString().toLowerCase();
-    const filteredByPlace = userPlace
-      ? eventKeyData.filter((ev) => {
-          const p = (ev.place || "").toString().toLowerCase();
-          if (userPlace === "online") {
-            // online 指定 → 場所が online もしくは未設定のイベント
-            return p.includes("online") || p === "";
-          }
-          return p.includes(userPlace);
-        })
-      : eventKeyData;
-
-    if (filteredByPlace.length === 0) {
+    if (eventKeyData.length === 0) {
       res
         .status(200)
         .json({ message: "該当する場所のイベントがありません。", data: [] });
       return;
     }
 
-    const allResults: { tag: string; recommendations: RecommendedEvent[] }[] =
-      [];
-
+    const results: { tag: string; recommendations: RecommendedEvent[] }[] = [];
     for (const tag of tags) {
-      const recs = await recommendEventsWithKeyData(tag, filteredByPlace);
-      allResults.push({ tag, recommendations: recs });
+      const recs = await recommendEventsWithKeyData(tag, eventKeyData);
+      results.push({ tag, recommendations: recs });
     }
 
-    res.json(allResults);
+    // 開発用ログ
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        "[recommendByUser] results:\n",
+        JSON.stringify(results, null, 2)
+      );
+    }
+
+    res.json(results);
     return;
-  } catch (error) {
-    next(error);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/recommend/tag
+ * body: { userId, tag }
+ * 指定タグでレコメンドを返す
+ */
+export const recommendByTag: RequestHandler = async (req, res, next) => {
+  try {
+    const { userId, tag } = req.body;
+    if (!userId || !tag) {
+      res.status(400).json({ message: "userId と tag の両方が必須です" });
+      return;
+    }
+
+    const user = await getUserWithDetailsById(userId);
+    if (!user) {
+      res
+        .status(404)
+        .json({ message: `ユーザー ${userId} が見つかりません。` });
+      return;
+    }
+
+    // 場所・形式で直接DBクエリ
+    const locRaw = (user.place || "").toString();
+    const locLower = locRaw.toLowerCase();
+    const filterOpts: any = {};
+    if (locRaw) {
+      if (locLower === "online") filterOpts.format = "ONLINE";
+      else filterOpts.location = locRaw;
+    }
+
+    const events = await getFilteredEvents(filterOpts);
+
+    const eventKeyData: EventKeyData[] = events.map((ev: any) => ({
+      id: ev.id,
+      keyPhrases: ev.keyPhrases || [],
+      keySentences: ev.keySentences || [],
+      ...ev,
+    }));
+
+    if (eventKeyData.length === 0) {
+      res
+        .status(200)
+        .json({ message: "該当する場所のイベントがありません。", data: [] });
+      return;
+    }
+
+    const recommendations = await recommendEventsWithKeyData(tag, eventKeyData);
+
+    // 開発用ログ
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `[recommendByTag] tag=${tag} recommendations:\n`,
+        JSON.stringify(recommendations, null, 2)
+      );
+    }
+
+    res.json({ tag, recommendations });
+    return;
+  } catch (err) {
+    next(err);
   }
 };

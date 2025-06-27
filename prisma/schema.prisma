@@ -165,7 +165,7 @@ model User {
   email         String?    @unique
   emailVerified DateTime?
   image         String?
-  lineId        String?
+  lineId        String?    @unique
   stack         String[]
   level         String?
   place         String?

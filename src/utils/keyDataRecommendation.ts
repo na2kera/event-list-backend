@@ -4,7 +4,8 @@ import {
   InterestWeightMode,
   FuseMethod,
   ScoredEvent,
-} from "./similarityUtils";
+  filterEventsWithLLM,
+} from "./ragUtils";
 
 // イベント型（最低限 id, keyPhrases, keySentences があれば OK）
 export interface EventKeyData {
@@ -16,8 +17,8 @@ export interface EventKeyData {
 }
 
 export interface RecommendationOptions {
-  interestModes?: InterestWeightMode[]; // default ["concat", "per_keyword"]
-  fuseMethods?: FuseMethod[]; // default ["rrf", "weighted"]
+  interestModes?: InterestWeightMode[]; // default ["concat"]
+  fuseMethods?: FuseMethod[]; // default ["weighted"]
   similarityThreshold?: number; // default 0.35
   topN?: number; // default 5
 }
@@ -44,12 +45,12 @@ export const recommendEventsWithKeyData = async (
   events: EventKeyData[],
   opts: RecommendationOptions = {}
 ): Promise<RecommendedEvent[]> => {
-  const {
-    interestModes = ["concat", "per_keyword"],
-    fuseMethods = ["rrf", "weighted"],
-    similarityThreshold = 0.35,
-    topN = 5,
-  } = opts;
+  // ===== オプション解決 =====
+  // 引数で明示されない場合は 1 通りのみ実行する（デフォルト: concat + weighted）
+  const interestModes = opts.interestModes ?? ["concat"];
+  const fuseMethods = opts.fuseMethods ?? ["weighted"];
+  const similarityThreshold = opts.similarityThreshold ?? 0.35;
+  const topN = opts.topN ?? 5;
 
   // keyPhrases / keySentences を EventElement 形式に変換
   const phraseEvents = events.map((ev) => ({
@@ -104,5 +105,8 @@ export const recommendEventsWithKeyData = async (
     }
   }
 
-  return results;
+  // LLMによる最終フィルタリング
+  const filteredResults = await filterEventsWithLLM(userTag, results);
+
+  return filteredResults;
 };

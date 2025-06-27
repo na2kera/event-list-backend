@@ -8,6 +8,13 @@
 
 // OpenAI Embeddings を利用するため、ハッシュベースの stringToVector は不要になりました。
 import { OpenAIEmbeddings } from "@langchain/openai";
+import {
+  ChatPromptTemplate,
+  HumanMessagePromptTemplate,
+  SystemMessagePromptTemplate,
+} from "@langchain/core/prompts";
+import { ChatOpenAI } from "@langchain/openai";
+import { RecommendedEvent } from "./keyDataRecommendation";
 
 // 高速・低コストモデルをデフォルトで使用（必要に応じて変更可能）
 const embeddings = new OpenAIEmbeddings({
@@ -278,16 +285,44 @@ export const rerankEventsRRF = async (
     .sort((a, b) => b.score - a.score);
 };
 
-/* ===================== 使い方（モック） =====================
-import { computeInterestWeights } from "./similarityUtils";
+// ====================== LLM 最終フィルタリング ======================
+const llmSystemPrompt = `あなたは学生エンジニア向けイベントの推薦アシスタントです。\n与えられた興味タグとイベント候補リストをもとに、ユーザーに本当に推薦すべきイベントIDのみを厳密なJSON配列で返してください。\n説明や余分なテキストは一切含めないでください。候補がない場合は空配列[]を返してください。例:\n[\n  \"event-id-1\", \"event-id-3\"\n]`;
 
-const userTags = ["JavaScript", "React", "AI"];
-const events = [
-  { id: "1", keywords: ["JavaScript", "Vue", "フロントエンド"] },
-  { id: "2", keywords: ["生成AI", "LLM", "Python"] },
-  { id: "3", keywords: ["React", "TypeScript", "Next.js"] },
-];
+/**
+ * LLMを用いて最終的に推薦イベントを絞り込む
+ * @param interestTag ユーザーの興味タグ
+ * @param rankedEvents スコア付きでランキングされたイベント（降順）
+ * @param topK LLMに渡す最大件数
+ */
+export const filterEventsWithLLM = async (
+  interestTag: string,
+  rankedEvents: RecommendedEvent[],
+  topK: number = 10
+): Promise<RecommendedEvent[]> => {
+  if (rankedEvents.length === 0) return [];
+  const llm = new ChatOpenAI({ modelName: "gpt-4o", temperature: 0 });
 
-const results = computeInterestWeights(userTags, events);
-// results → [{ id: "3", score: 1 }, { id: "1", score: 0.8 }, ...]
-*/
+  // 上位候補のみ渡す
+  const candidates = rankedEvents.slice(0, topK).map((r) => r.event);
+  const humanMsg = `# 興味タグ\n${interestTag}\n\n# イベント候補(JSON)\n\u0060\u0060\u0060json\n${JSON.stringify(
+    candidates,
+    null,
+    2
+  )}\n\u0060\u0060\u0060\n推薦すべきイベントIDをJSON配列で回答してください`;
+
+  const prompt = ChatPromptTemplate.fromMessages([
+    SystemMessagePromptTemplate.fromTemplate(llmSystemPrompt),
+    HumanMessagePromptTemplate.fromTemplate(humanMsg),
+  ]);
+
+  try {
+    const response = await prompt.pipe(llm).invoke({});
+    const ids = JSON.parse(response.content as string) as string[];
+    const idSet = new Set(ids);
+    return rankedEvents.filter((r) => idSet.has(r.event.id));
+  } catch (e) {
+    console.error("LLMフィルタリング失敗", e);
+    // 失敗時は元の順位上位 topK を返す
+    return rankedEvents.slice(0, topK);
+  }
+};
