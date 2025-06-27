@@ -1,12 +1,12 @@
 import { Router } from "express";
 import {
   recommendByUser,
-  recommendByTag,
+  recommendByMessage,
 } from "../controllers/recommendController";
 
 const router = Router();
 
 router.post("/user", recommendByUser);
-router.post("/tag", recommendByTag);
+router.post("/message", recommendByMessage);
 
 export default router;
