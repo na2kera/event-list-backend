@@ -51,6 +51,7 @@ prisma/*.db
 # Temporary files
 tmp/
 temp/ 
+test/
 
 # Output directory
 output/

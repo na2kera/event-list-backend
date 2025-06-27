@@ -48,25 +48,30 @@ export const lineLogin: RequestHandler = async (req, res, next) => {
 
     const { userId: lineId, displayName, pictureUrl } = profileResponse.data;
 
-    // ユーザー情報をデータベースに保存または更新
-    const user = await prisma.user.upsert({
-      where: {
-        lineId,
-      },
-      update: {
-        name: displayName,
-        image: pictureUrl,
-      },
-      create: {
-        id: crypto.randomUUID(),
-        name: displayName,
-        lineId,
-        image: pictureUrl,
-        stack: [],
-        tag: [],
-        goal: [],
-      },
-    });
+    // lineId はユニークでない可能性があるため手動 upsert
+    let user = await prisma.user.findFirst({ where: { lineId } });
+
+    if (user) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name: displayName,
+          image: pictureUrl,
+        },
+      });
+    } else {
+      user = await prisma.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          name: displayName,
+          lineId,
+          image: pictureUrl,
+          stack: [],
+          tag: [],
+          goal: [],
+        },
+      });
+    }
 
     // セッション情報を保存
     const session = await prisma.session.create({

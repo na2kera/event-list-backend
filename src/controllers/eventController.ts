@@ -3,6 +3,8 @@ import { RequestHandler } from "express";
 import prisma from "../config/prisma";
 import { Prisma } from "@prisma/client";
 import { recommendEventsByHyDE } from "../utils/recommendEvents";
+import crypto from "crypto";
+import { extractEventKeyData } from "../utils/extractEventKeyData";
 
 export const getEvents: RequestHandler = async (
   req: Request,
@@ -116,6 +118,11 @@ export const getEventById: RequestHandler = async (req, res, next) => {
 
 export const createEvent: RequestHandler = async (req, res, next) => {
   try {
+    // 説明文からキーデータ抽出
+    const { keywords, keyPhrases, keySentences } = await extractEventKeyData(
+      req.body.description || ""
+    );
+
     const event = await prisma.event.create({
       data: {
         id: crypto.randomUUID(), // UUIDを生成
@@ -130,6 +137,9 @@ export const createEvent: RequestHandler = async (req, res, next) => {
         detailUrl: req.body.detailUrl,
         image: req.body.image,
         organizationId: req.body.organizationId,
+        keywords,
+        keyPhrases,
+        keySentences,
         updatedAt: new Date(), // 現在の日時を設定
         EventSkill: {
           create: req.body.skills?.map((skill: { name: string }) => ({
