@@ -3,6 +3,7 @@ import { RequestHandler } from "express";
 import {
   fetchConnpassEventsV2,
   ConnpassSearchParamsV2,
+  fetchAndSaveUpcomingEvents,
 } from "../services/connpassService";
 import dotenv from "dotenv";
 
@@ -36,7 +37,7 @@ export const searchConnpassEvents: RequestHandler = async (
 
     // リクエストパラメータの取得
     const options: ConnpassSearchParamsV2 = {
-      api_key: CONNPASS_API_KEY
+      api_key: CONNPASS_API_KEY,
     };
 
     // キーワード（AND条件）
@@ -56,12 +57,12 @@ export const searchConnpassEvents: RequestHandler = async (
     // 日付範囲
     if (req.query.startDate) {
       const startDate = new Date(req.query.startDate as string);
-      options.ymd = startDate.toISOString().split('T')[0].replace(/-/g, '');
+      options.ymd = startDate.toISOString().split("T")[0].replace(/-/g, "");
     }
 
     if (req.query.endDate) {
       const endDate = new Date(req.query.endDate as string);
-      options.ymd_end = endDate.toISOString().split('T')[0].replace(/-/g, '');
+      options.ymd_end = endDate.toISOString().split("T")[0].replace(/-/g, "");
     }
 
     // タグ
@@ -158,7 +159,9 @@ export const getConnpassEventById: RequestHandler = async (
     });
 
     // IDでフィルタリング
-    const filteredEvents = response.events.filter((event) => event.id === eventId);
+    const filteredEvents = response.events.filter(
+      (event) => event.id === eventId
+    );
 
     if (filteredEvents.length === 0) {
       res.status(404).json({
@@ -226,9 +229,9 @@ export const getUpcomingConnpassEvents: RequestHandler = async (
     endDate.setDate(today.getDate() + days);
 
     // イベント検索の実行
-    const todayStr = today.toISOString().split('T')[0].replace(/-/g, '');
-    const endDateStr = endDate.toISOString().split('T')[0].replace(/-/g, '');
-    
+    const todayStr = today.toISOString().split("T")[0].replace(/-/g, "");
+    const endDateStr = endDate.toISOString().split("T")[0].replace(/-/g, "");
+
     const response = await fetchConnpassEventsV2({
       api_key: CONNPASS_API_KEY,
       ymd: todayStr,
@@ -249,6 +252,38 @@ export const getUpcomingConnpassEvents: RequestHandler = async (
     res.status(500).json({
       success: false,
       message: "イベント検索中にエラーが発生しました",
+      error: (error as Error).message,
+    });
+    return;
+  }
+};
+
+/**
+ * 今後開催されるConnpassイベントを同期する
+ * @param req リクエスト
+ * @param res レスポンス
+ */
+export const syncUpcomingConnpassEvents: RequestHandler = async (_req, res) => {
+  try {
+    if (!CONNPASS_API_KEY) {
+      res
+        .status(500)
+        .json({ success: false, message: "CONNPASS_API_KEY not set" });
+      return;
+    }
+
+    const { fetched, saved } = await fetchAndSaveUpcomingEvents(
+      CONNPASS_API_KEY,
+      30
+    );
+
+    res.json({ success: true, fetched, saved });
+    return;
+  } catch (error) {
+    console.error("syncUpcomingConnpassEvents error", error);
+    res.status(500).json({
+      success: false,
+      message: "sync error",
       error: (error as Error).message,
     });
     return;

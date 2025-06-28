@@ -99,10 +99,27 @@ export const computeInterestWeightsFlexible = async (
   }
 
   // ===== concat モード =====
-  const eventTexts = events.map((ev) => ev.keywords.join(" "));
-  const eventVectors = await embeddings.embedDocuments(eventTexts);
+  // 空文字列イベントを除外して Embeddings を呼び出す
+  const nonEmptyTexts: string[] = [];
+  const nonEmptyIdx: number[] = [];
+  events.forEach((ev, idx) => {
+    const txt = ev.keywords.join(" ").trim();
+    if (txt.length > 0) {
+      nonEmptyTexts.push(txt);
+      nonEmptyIdx.push(idx);
+    }
+  });
+
+  const vectors =
+    nonEmptyTexts.length > 0
+      ? await embeddings.embedDocuments(nonEmptyTexts)
+      : [];
+
   const scored: ScoredEvent[] = events.map((ev, idx) => {
-    const sim = cosineSimilarity(userVector, eventVectors[idx]);
+    // nonEmptyIdx でベクトルが計算されている場合のみ類似度を計算
+    const vecIdx = nonEmptyIdx.indexOf(idx);
+    const sim =
+      vecIdx !== -1 ? cosineSimilarity(userVector, vectors[vecIdx]) : 0; // 空テキストはスコア 0
     return { id: ev.id, score: Math.max(0, sim) };
   });
   return scored.sort((a, b) => b.score - a.score);
@@ -230,6 +247,9 @@ const similarityToTag = async (
   userTag: string,
   text: string
 ): Promise<number> => {
+  // 空文字列の場合は類似度 0 とする
+  if (!text || text.trim().length === 0) return 0;
+
   const [tagVec, txtVec] = await Promise.all([
     embeddings.embedQuery(userTag),
     embeddings.embedQuery(text),
@@ -304,11 +324,10 @@ export const filterEventsWithLLM = async (
 
   // 上位候補のみ渡す
   const candidates = rankedEvents.slice(0, topK).map((r) => r.event);
-  const humanMsg = `# 興味タグ\n${interestTag}\n\n# イベント候補(JSON)\n\u0060\u0060\u0060json\n${JSON.stringify(
-    candidates,
-    null,
-    2
-  )}\n\u0060\u0060\u0060\n推薦すべきイベントIDをJSON配列で回答してください`;
+  const jsonEscaped = JSON.stringify(candidates, null, 2)
+    .replace(/\{/g, "{{")
+    .replace(/\}/g, "}}");
+  const humanMsg = `# 興味タグ\n${interestTag}\n\n# イベント候補(JSON)\n\u0060\u0060\u0060json\n${jsonEscaped}\n\u0060\u0060\u0060\n推薦すべきイベントIDをJSON配列で回答してください`;
 
   const prompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(llmSystemPrompt),

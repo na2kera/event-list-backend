@@ -32,7 +32,7 @@ export const convertConnpassEventToPrismaEvent = (
     ? connpassEvent.tags.map((tag: string) => tag.toLowerCase())
     : [];
 
-  // タグとタイトルからイベントタイプを判定
+  // 修正が必要
   if (
     title.includes("ハッカソン") ||
     tags.includes("hackathon") ||

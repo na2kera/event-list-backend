@@ -1,4 +1,7 @@
 import axios from "axios";
+import prisma from "../config/prisma";
+import { convertConnpassEventToPrismaEvent } from "../utils/connpassEventUtils";
+import { extractEventKeyData } from "../utils/extractEventKeyData";
 
 /**
  * Connpass API V2のレスポンス型定義
@@ -103,4 +106,67 @@ export const fetchConnpassEventsV2 = async (
     console.error("Connpass API V2呼び出しエラー:", error);
     throw error;
   }
+};
+
+/**
+ * 今日から days 日後までのイベントを取得して Event テーブルに upsert
+ * @param days 何日後まで取得するか (デフォルト 30 日)
+ * @returns 取得件数と保存件数
+ */
+export const fetchAndSaveUpcomingEvents = async (
+  apiKey: string,
+  days: number = 30
+): Promise<{ fetched: number; saved: number }> => {
+  if (!apiKey) throw new Error("CONNPASS_API_KEY is required");
+
+  const today = new Date();
+  const end = new Date();
+  end.setDate(today.getDate() + days);
+
+  const ymd = today.toISOString().split("T")[0].replace(/-/g, "");
+  const ymdEnd = end.toISOString().split("T")[0].replace(/-/g, "");
+
+  const response = await fetchConnpassEventsV2({
+    api_key: apiKey,
+    ymd,
+    ymd_end: ymdEnd,
+    order: 2,
+    count: 100,
+  });
+
+  const events = response.events.map(convertConnpassEventToPrismaEvent);
+
+  let saved = 0;
+  for (const ev of events) {
+    try {
+      // メタデータ抽出
+      const { keywords, keyPhrases, keySentences } = await extractEventKeyData(
+        ev.description || ""
+      );
+
+      await prisma.event.upsert({
+        where: { id: ev.id },
+        create: { ...ev, keywords, keyPhrases, keySentences },
+        update: {
+          title: ev.title,
+          description: ev.description,
+          eventDate: ev.eventDate,
+          startTime: ev.startTime,
+          endTime: ev.endTime,
+          venue: ev.venue,
+          address: ev.address,
+          detailUrl: ev.detailUrl,
+          keywords,
+          keyPhrases,
+          keySentences,
+          updatedAt: new Date(),
+        },
+      });
+      saved++;
+    } catch (e) {
+      console.error("Event upsert failed", e);
+    }
+  }
+
+  return { fetched: events.length, saved };
 };
