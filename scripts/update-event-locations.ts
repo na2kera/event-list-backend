@@ -10,7 +10,7 @@ const initializeGeminiAPI = (): GoogleGenerativeAI => {
   return new GoogleGenerativeAI(apiKey);
 };
 
-// 場所情報抽出のプロンプト生成
+// 場所・会場情報抽出のプロンプト生成
 const generateLocationExtractionPrompt = (
   title: string,
   description: string,
@@ -18,23 +18,23 @@ const generateLocationExtractionPrompt = (
   address?: string
 ): string => {
   return `
-あなたは日本のIT・技術イベントの専門家です。以下のイベント情報から、具体的な場所・地域情報を抽出してください。
+あなたは日本のIT・技術イベントの専門家です。以下のイベント情報から、会場情報と場所・地域情報を抽出してください。
 
 【イベント情報】
 タイトル: ${title}
-会場: ${venue}
+会場: ${venue || "不明"}
 住所: ${address || "不明"}
-詳細: ${description?.substring(0, 1000) || "詳細なし"}
+詳細: ${description?.substring(0, 1500) || "詳細なし"}
 
 【抽出指示】
-1. 都道府県名（例：東京都、大阪府、神奈川県）
-2. 市区町村名（例：渋谷区、新宿区、大阪市）
-3. 主要エリア名（例：渋谷、新宿、梅田、天神）
-4. オンライン開催の場合は「オンライン」
-5. 場所が不明確な場合は「不明」
+1. **会場名**: 具体的な施設名、企業名、ビル名（例：渋谷ヒカリエ、サイバーエージェント、Google Japan）
+2. **場所情報**: 都道府県名、市区町村名、主要エリア名（例：東京都渋谷区、大阪市梅田）
+3. **開催形式**: オンライン/オフライン/ハイブリッドの判定
+4. **不明な場合**: 会場や場所が特定できない場合は正直に「不明」と回答
 
 【出力形式】（JSON形式で回答）
 {
+  "venue": "抽出された会場名",
   "location": "抽出された場所情報",
   "prefecture": "都道府県名",
   "city": "市区町村名", 
@@ -45,20 +45,23 @@ const generateLocationExtractionPrompt = (
 }
 
 【注意事項】
+- 会場名は具体的な施設名を優先（50文字以内）
 - 場所情報は簡潔に（20文字以内）
 - オンライン開催かどうかを必ず判定
 - 不明確な場合は正直に「不明」と回答
-- 日本の地名に限定
+- 日本の地名・施設名に限定
+- 既存の会場情報がある場合は尊重しつつ、より詳細な情報があれば更新
 `;
 };
 
-// Gemini APIで場所情報を抽出
+// Gemini APIで場所・会場情報を抽出
 const extractLocationWithGemini = async (
   title: string,
   description: string,
   venue: string,
   address?: string
 ): Promise<{
+  venue: string;
   location: string;
   prefecture?: string;
   city?: string;
@@ -93,9 +96,10 @@ const extractLocationWithGemini = async (
 
     const parsed = JSON.parse(jsonMatch[0]);
     
-    console.log(`✅ 場所抽出成功: ${parsed.location} (信頼度: ${parsed.confidence})`);
+    console.log(`✅ 場所・会場抽出成功: ${parsed.venue} / ${parsed.location} (信頼度: ${parsed.confidence})`);
     
     return {
+      venue: parsed.venue || "不明",
       location: parsed.location || "不明",
       prefecture: parsed.prefecture,
       city: parsed.city,
@@ -111,14 +115,18 @@ const extractLocationWithGemini = async (
   }
 };
 
-// locationが空またはnullのイベントを取得
-const getEventsWithoutLocation = async (limit: number = 50) => {
+// locationやvenueが空またはnullのイベントを取得
+const getEventsWithoutLocationOrVenue = async (limit: number = 50) => {
   return await prisma.event.findMany({
     where: {
       OR: [
+        // locationが空または問題のある値
         { location: null },
         { location: "" },
-        { location: "今から" }, // ユーザーが言及した問題のあるデータ
+        { location: "今から" },
+        // venueが空
+        { venue: null },
+        { venue: "" }
       ]
     },
     select: {
@@ -137,10 +145,12 @@ const getEventsWithoutLocation = async (limit: number = 50) => {
   });
 };
 
-// イベントのlocationフィールドを更新
-const updateEventLocation = async (
+// イベントのvenueとlocationフィールドを更新
+const updateEventLocationAndVenue = async (
   eventId: string,
+  currentVenue: string,
   locationData: {
+    venue: string;
     location: string;
     prefecture?: string;
     city?: string;
@@ -150,12 +160,22 @@ const updateEventLocation = async (
     reasoning: string;
   }
 ) => {
+  const updateData: { venue?: string; location: string } = {
+    location: locationData.location
+  };
+  
+  // 現在のvenueが空または不明な場合のみvenueを更新
+  if (!currentVenue || currentVenue === "" || currentVenue === "不明") {
+    updateData.venue = locationData.venue;
+  }
+  
   await prisma.event.update({
     where: { id: eventId },
-    data: { location: locationData.location }
+    data: updateData
   });
   
-  console.log(`💾 更新完了: ${eventId} -> ${locationData.location}`);
+  const venueUpdate = updateData.venue ? ` (会場: ${updateData.venue})` : "";
+  console.log(`💾 更新完了: ${eventId} -> ${locationData.location}${venueUpdate}`);
 };
 
 // メイン処理
@@ -163,8 +183,8 @@ const main = async () => {
   try {
     console.log("🚀 イベント場所情報更新スクリプト開始");
     
-    // locationが空のイベントを取得
-    const events = await getEventsWithoutLocation();
+    // locationやvenueが空のイベントを取得
+    const events = await getEventsWithoutLocationOrVenue();
     console.log(`📊 更新対象イベント数: ${events.length}件`);
     
     if (events.length === 0) {
@@ -182,17 +202,17 @@ const main = async () => {
       console.log(`\n[${i + 1}/${events.length}] 処理中: ${event.title}`);
       
       try {
-        // Gemini APIで場所情報を抽出
+        // Gemini APIで場所・会場情報を抽出
         const locationData = await extractLocationWithGemini(
           event.title,
           event.description || "",
-          event.venue,
+          event.venue || "",
           event.address || undefined
         );
         
         if (locationData && locationData.confidence > 0.3) {
           // 信頼度が十分高い場合のみ更新
-          await updateEventLocation(event.id, locationData);
+          await updateEventLocationAndVenue(event.id, event.venue || "", locationData);
           successCount++;
         } else {
           console.log(`⚠️ スキップ: 信頼度が低いまたは抽出失敗`);
@@ -226,24 +246,31 @@ const dryRun = async () => {
   try {
     console.log("🔍 DRY RUN モード: 実際の更新は行いません");
     
-    const events = await getEventsWithoutLocation(10); // 少数でテスト
+    const events = await getEventsWithoutLocationOrVenue(10); // 少数でテスト
     console.log(`📊 テスト対象イベント数: ${events.length}件`);
     
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
       console.log(`\n[${i + 1}/${events.length}] テスト中: ${event.title}`);
+      console.log(`現在の会場: ${event.venue || "空"}`);
+      console.log(`現在の場所: ${event.location || "空"}`);
       
       const locationData = await extractLocationWithGemini(
         event.title,
         event.description || "",
-        event.venue,
+        event.venue || "",
         event.address || undefined
       );
       
       if (locationData) {
-        console.log(`📍 抽出結果: ${locationData.location}`);
+        console.log(`🏢 会場抽出結果: ${locationData.venue}`);
+        console.log(`📍 場所抽出結果: ${locationData.location}`);
         console.log(`🎯 信頼度: ${locationData.confidence}`);
         console.log(`📝 理由: ${locationData.reasoning}`);
+        
+        // 更新予定の表示
+        const venueWillUpdate = (!event.venue || event.venue === "" || event.venue === "不明");
+        console.log(`🔄 更新予定: venue=${venueWillUpdate ? "Yes" : "No"}, location=Yes`);
       } else {
         console.log(`❌ 抽出失敗`);
       }
