@@ -6,7 +6,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
     "build": "tsc",
-    "start": "node dist/app.js"
+    "start": "node dist/app.js",
+    "update-locations": "ts-node scripts/update-event-locations.ts",
+    "update-locations:dry-run": "ts-node scripts/update-event-locations.ts --dry-run"
   },
   "keywords": [],
   "author": "",
