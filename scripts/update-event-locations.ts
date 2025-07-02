@@ -29,13 +29,15 @@ const generateLocationExtractionPrompt = (
 【抽出指示】
 1. **会場名**: 具体的な施設名、企業名、ビル名（例：渋谷ヒカリエ、サイバーエージェント、Google Japan）
 2. **場所情報**: 都道府県名、市区町村名、主要エリア名（例：東京都渋谷区、大阪市梅田）
-3. **開催形式**: オンライン/オフライン/ハイブリッドの判定
-4. **不明な場合**: 会場や場所が特定できない場合は正直に「不明」と回答
+3. **住所情報**: 詳細な住所（郵便番号、番地まで含む具体的な住所）
+4. **開催形式**: オンライン/オフライン/ハイブリッドの判定
+5. **不明な場合**: 会場や場所が特定できない場合は正直に「不明」と回答
 
 【出力形式】（JSON形式で回答）
 {
   "venue": "抽出された会場名",
   "location": "抽出された場所情報",
+  "address": "抽出された住所情報",
   "prefecture": "都道府県名",
   "city": "市区町村名", 
   "area": "エリア名",
@@ -47,6 +49,7 @@ const generateLocationExtractionPrompt = (
 【注意事項】
 - 会場名は具体的な施設名を優先（50文字以内）
 - 場所情報は簡潔に（20文字以内）
+- 住所情報は可能な限り詳細に（100文字以内）
 - オンライン開催かどうかを必ず判定
 - 不明確な場合は正直に「不明」と回答
 - 日本の地名・施設名に限定
@@ -63,6 +66,7 @@ const extractLocationWithGemini = async (
 ): Promise<{
   venue: string;
   location: string;
+  address: string;
   prefecture?: string;
   city?: string;
   area?: string;
@@ -76,7 +80,12 @@ const extractLocationWithGemini = async (
     const genAI = initializeGeminiAPI();
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
-    const prompt = generateLocationExtractionPrompt(title, description, venue, address);
+    const prompt = generateLocationExtractionPrompt(
+      title,
+      description,
+      venue,
+      address
+    );
 
     // タイムアウト制御付きAPI呼び出し
     const enhancePromise = model.generateContent(prompt);
@@ -84,7 +93,10 @@ const extractLocationWithGemini = async (
       setTimeout(() => reject(new Error("API タイムアウト")), 8000)
     );
 
-    const result = await Promise.race([enhancePromise, timeoutPromise]) as any;
+    const result = (await Promise.race([
+      enhancePromise,
+      timeoutPromise,
+    ])) as any;
     const responseText = result.response.text();
 
     // JSON解析
@@ -95,28 +107,30 @@ const extractLocationWithGemini = async (
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-    
-    console.log(`✅ 場所・会場抽出成功: ${parsed.venue} / ${parsed.location} (信頼度: ${parsed.confidence})`);
-    
+
+    console.log(
+      `✅ 場所・会場・住所抽出成功: ${parsed.venue} / ${parsed.location} / ${parsed.address} (信頼度: ${parsed.confidence})`
+    );
+
     return {
       venue: parsed.venue || "不明",
       location: parsed.location || "不明",
+      address: parsed.address || "不明",
       prefecture: parsed.prefecture,
       city: parsed.city,
       area: parsed.area,
       confidence: parsed.confidence || 0.5,
       is_online: parsed.is_online || false,
-      reasoning: parsed.reasoning || ""
+      reasoning: parsed.reasoning || "",
     };
-
   } catch (error) {
     console.error("❌ Gemini API エラー:", error);
     return null;
   }
 };
 
-// locationやvenueが空またはnullのイベントを取得
-const getEventsWithoutLocationOrVenue = async (limit: number = 50) => {
+// locationやvenue、addressが空またはnullのイベントを取得
+const getEventsWithoutLocationVenueOrAddress = async (limit: number = 50) => {
   return await prisma.event.findMany({
     where: {
       OR: [
@@ -126,8 +140,11 @@ const getEventsWithoutLocationOrVenue = async (limit: number = 50) => {
         { location: "今から" },
         // venueが空
         { venue: null },
-        { venue: "" }
-      ]
+        { venue: "" },
+        // addressが空
+        { address: null },
+        { address: "" },
+      ],
     },
     select: {
       id: true,
@@ -139,19 +156,21 @@ const getEventsWithoutLocationOrVenue = async (limit: number = 50) => {
       eventDate: true,
     },
     orderBy: {
-      eventDate: 'desc'
+      eventDate: "desc",
     },
-    take: limit
+    take: limit,
   });
 };
 
-// イベントのvenueとlocationフィールドを更新
-const updateEventLocationAndVenue = async (
+// イベントのvenue、location、addressフィールドを更新
+const updateEventLocationVenueAndAddress = async (
   eventId: string,
   currentVenue: string,
+  currentAddress: string,
   locationData: {
     venue: string;
     location: string;
+    address: string;
     prefecture?: string;
     city?: string;
     area?: string;
@@ -160,33 +179,43 @@ const updateEventLocationAndVenue = async (
     reasoning: string;
   }
 ) => {
-  const updateData: { venue?: string; location: string } = {
-    location: locationData.location
+  const updateData: { venue?: string; location: string; address?: string } = {
+    location: locationData.location,
   };
-  
+
   // 現在のvenueが空または不明な場合のみvenueを更新
   if (!currentVenue || currentVenue === "" || currentVenue === "不明") {
     updateData.venue = locationData.venue;
   }
-  
+
+  // 現在のaddressが空または不明な場合のみaddressを更新
+  if (!currentAddress || currentAddress === "" || currentAddress === "不明") {
+    updateData.address = locationData.address;
+  }
+
   await prisma.event.update({
     where: { id: eventId },
-    data: updateData
+    data: updateData,
   });
-  
+
   const venueUpdate = updateData.venue ? ` (会場: ${updateData.venue})` : "";
-  console.log(`💾 更新完了: ${eventId} -> ${locationData.location}${venueUpdate}`);
+  const addressUpdate = updateData.address
+    ? ` (住所: ${updateData.address})`
+    : "";
+  console.log(
+    `💾 更新完了: ${eventId} -> ${locationData.location}${venueUpdate}${addressUpdate}`
+  );
 };
 
 // メイン処理
 const main = async () => {
   try {
     console.log("🚀 イベント場所情報更新スクリプト開始");
-    
-    // locationやvenueが空のイベントを取得
-    const events = await getEventsWithoutLocationOrVenue();
+
+    // location、venue、addressが空のイベントを取得
+    const events = await getEventsWithoutLocationVenueOrAddress();
     console.log(`📊 更新対象イベント数: ${events.length}件`);
-    
+
     if (events.length === 0) {
       console.log("✅ 更新対象のイベントはありません");
       return;
@@ -194,46 +223,49 @@ const main = async () => {
 
     let successCount = 0;
     let errorCount = 0;
-    
+
     // 各イベントを順次処理（レート制限を考慮）
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
-      
+
       console.log(`\n[${i + 1}/${events.length}] 処理中: ${event.title}`);
-      
+
       try {
-        // Gemini APIで場所・会場情報を抽出
+        // Gemini APIで場所・会場・住所情報を抽出
         const locationData = await extractLocationWithGemini(
           event.title,
           event.description || "",
           event.venue || "",
           event.address || undefined
         );
-        
+
         if (locationData && locationData.confidence > 0.3) {
           // 信頼度が十分高い場合のみ更新
-          await updateEventLocationAndVenue(event.id, event.venue || "", locationData);
+          await updateEventLocationVenueAndAddress(
+            event.id,
+            event.venue || "",
+            event.address || "",
+            locationData
+          );
           successCount++;
         } else {
           console.log(`⚠️ スキップ: 信頼度が低いまたは抽出失敗`);
           errorCount++;
         }
-        
+
         // レート制限対策で少し待機
         if (i < events.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         }
-        
       } catch (error) {
         console.error(`❌ エラー: ${event.id}`, error);
         errorCount++;
       }
     }
-    
+
     console.log("\n🏆 処理完了");
     console.log(`✅ 成功: ${successCount}件`);
     console.log(`❌ エラー: ${errorCount}件`);
-    
   } catch (error) {
     console.error("❌ メイン処理エラー:", error);
   } finally {
@@ -245,42 +277,50 @@ const main = async () => {
 const dryRun = async () => {
   try {
     console.log("🔍 DRY RUN モード: 実際の更新は行いません");
-    
-    const events = await getEventsWithoutLocationOrVenue(10); // 少数でテスト
+
+    const events = await getEventsWithoutLocationVenueOrAddress(10); // 少数でテスト
     console.log(`📊 テスト対象イベント数: ${events.length}件`);
-    
+
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
       console.log(`\n[${i + 1}/${events.length}] テスト中: ${event.title}`);
       console.log(`現在の会場: ${event.venue || "空"}`);
       console.log(`現在の場所: ${event.location || "空"}`);
-      
+      console.log(`現在の住所: ${event.address || "空"}`);
+
       const locationData = await extractLocationWithGemini(
         event.title,
         event.description || "",
         event.venue || "",
         event.address || undefined
       );
-      
+
       if (locationData) {
         console.log(`🏢 会場抽出結果: ${locationData.venue}`);
         console.log(`📍 場所抽出結果: ${locationData.location}`);
+        console.log(`🏠 住所抽出結果: ${locationData.address}`);
         console.log(`🎯 信頼度: ${locationData.confidence}`);
         console.log(`📝 理由: ${locationData.reasoning}`);
-        
+
         // 更新予定の表示
-        const venueWillUpdate = (!event.venue || event.venue === "" || event.venue === "不明");
-        console.log(`🔄 更新予定: venue=${venueWillUpdate ? "Yes" : "No"}, location=Yes`);
+        const venueWillUpdate =
+          !event.venue || event.venue === "" || event.venue === "不明";
+        const addressWillUpdate =
+          !event.address || event.address === "" || event.address === "不明";
+        console.log(
+          `🔄 更新予定: venue=${
+            venueWillUpdate ? "Yes" : "No"
+          }, location=Yes, address=${addressWillUpdate ? "Yes" : "No"}`
+        );
       } else {
         console.log(`❌ 抽出失敗`);
       }
-      
+
       // レート制限対策
       if (i < events.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
-    
   } catch (error) {
     console.error("❌ DRY RUN エラー:", error);
   } finally {
