@@ -10,6 +10,7 @@ import categoryRoutes from "./routes/categoryRoutes";
 import bookmarkRoutes from "./routes/bookmarkRoutes";
 import connpassRoutes from "./routes/connpassRoutes";
 import recommendRoutes from "./routes/recommendRoutes";
+import clickLogRoutes from "./routes/clickLogRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 import { PrismaClient } from "@prisma/client";
 
@@ -86,6 +87,7 @@ app.use("/api/bookmarks", bookmarkRoutes);
 app.use("/api/recommend", recommendRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/connpass", connpassRoutes);
+app.use("/api/click-logs", clickLogRoutes);
 
 // Error handling
 app.use(errorHandler);

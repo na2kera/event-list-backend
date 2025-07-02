@@ -77,6 +77,7 @@ model Event {
   EventGoal      EventGoal[]
   EventSkill     EventSkill[]
   EventSpeaker   EventSpeaker[]
+  ClickLog       ClickLog[]
 
   @@index([organizationId])
 }
@@ -175,6 +176,36 @@ model User {
   Account       Account[]
   Bookmark      Bookmark[]
   Session       Session[]
+  ClickLog      ClickLog[]
+}
+
+model ClickLog {
+  id              String   @id @default(uuid())
+  userId          String?
+  sessionId       String?
+  elementType     String?  // button, link, image, etc.
+  elementId       String?  // DOM element ID
+  elementClass    String?  // DOM element class
+  elementText     String?  // visible text content
+  pageUrl         String
+  pagePath        String
+  coordinateX     Int?
+  coordinateY     Int?
+  timestamp       DateTime @default(now())
+  userAgent       String?
+  ipAddress       String?
+  referrer        String?
+  eventId         String?  // if click is related to a specific event
+  metadata        Json?    // additional custom data
+  createdAt       DateTime @default(now())
+  User            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  Event           Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([pageUrl])
+  @@index([timestamp])
+  @@index([eventId])
 }
 
 enum DifficultyLevel {
