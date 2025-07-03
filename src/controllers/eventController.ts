@@ -200,6 +200,9 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
       skills, // スキル名（複数可）
       location, // 開催場所
       organizationId, // 主催団体ID
+      keywords, // キーワード配列（Event.keywords TEXT[]）
+      keyPhrases, // キーフレーズ配列（Event.keyPhrases TEXT[]）
+      keySentences, // キーセンテンス配列（Event.keySentences TEXT[]）
     } = req.query;
 
     // 検索条件を構築
@@ -265,6 +268,30 @@ export const searchEvents: RequestHandler = async (req, res, next) => {
           },
         };
       }
+    }
+
+    // keywords 配列のフィルタ
+    if (keywords) {
+      const kwArr = (Array.isArray(keywords) ? keywords : [keywords]).map(
+        String
+      );
+      where.keywords = { hasSome: kwArr };
+    }
+
+    // keyPhrases 配列のフィルタ
+    if (keyPhrases) {
+      const kpArr = (Array.isArray(keyPhrases) ? keyPhrases : [keyPhrases]).map(
+        String
+      );
+      where.keyPhrases = { hasSome: kpArr };
+    }
+
+    // keySentences 配列のフィルタ
+    if (keySentences) {
+      const ksArr = (
+        Array.isArray(keySentences) ? keySentences : [keySentences]
+      ).map(String);
+      where.keySentences = { hasSome: ksArr };
     }
 
     // イベントを検索
