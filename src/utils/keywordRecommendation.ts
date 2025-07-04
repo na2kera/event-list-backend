@@ -481,7 +481,7 @@ ${formatInstructions}
             eventId: rankedEvent.event.id || `event-${index}`,
             title: rankedEvent.event.title || `イベント${index + 1}`,
             relevanceScore: Math.min(100, rankedEvent.score * 10), // スコアを0-100に正規化
-          };
+          } as LLMRecommendedEvent;
         });
     }
 
@@ -495,7 +495,7 @@ ${formatInstructions}
         eventId: rankedEvent.event.id || `event-${index}`,
         title: rankedEvent.event.title || `イベント${index + 1}`,
         relevanceScore: Math.min(100, rankedEvent.score * 10), // スコアを0-100に正規化
-      };
+      } as LLMRecommendedEvent;
     });
   }
 };

@@ -404,11 +404,14 @@ ${formatInstructions}
       );
 
       // フォールバック処理：上位5件のイベントを選択
-      recommendedEvents = rankedEvents.slice(0, 5).map((rankedEvent) => ({
-        eventId: rankedEvent.event.id,
-        title: rankedEvent.event.title,
-        relevanceScore: Math.min(Math.round(rankedEvent.score * 10), 100), // スコアを0-100に変換
-      }));
+      recommendedEvents = rankedEvents.slice(0, 5).map(
+        (rankedEvent, index) =>
+          ({
+            eventId: rankedEvent.event.id || `event-${index}`,
+            title: rankedEvent.event.title || `イベント${index + 1}`,
+            relevanceScore: Math.min(Math.round(rankedEvent.score * 10), 100), // スコアを0-100に変換
+          } as LLMRecommendedEvent)
+      );
     }
 
     return recommendedEvents;
