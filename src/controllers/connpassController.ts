@@ -3,7 +3,8 @@ import { RequestHandler } from "express";
 import {
   fetchConnpassEventsV2,
   ConnpassSearchParamsV2,
-  fetchAndSaveUpcomingEvents,
+  fetchAndSaveAllPrefectureEvents,
+  fetchAndSaveLatestEvents,
 } from "../services/connpassService";
 import dotenv from "dotenv";
 
@@ -263,7 +264,7 @@ export const getUpcomingConnpassEvents: RequestHandler = async (
  * @param req リクエスト
  * @param res レスポンス
  */
-export const syncUpcomingConnpassEvents: RequestHandler = async (_req, res) => {
+export const syncUpcomingConnpassEvents: RequestHandler = async (req, res) => {
   try {
     if (!CONNPASS_API_KEY) {
       res
@@ -271,12 +272,12 @@ export const syncUpcomingConnpassEvents: RequestHandler = async (_req, res) => {
         .json({ success: false, message: "CONNPASS_API_KEY not set" });
       return;
     }
-
-    const { fetched, saved } = await fetchAndSaveUpcomingEvents(
+    // daysをクエリまたはbodyから取得、なければ30
+    const days = Number(req.query.days || req.body?.days || 30);
+    const { fetched, saved } = await fetchAndSaveAllPrefectureEvents(
       CONNPASS_API_KEY,
-      30
+      days
     );
-
     res.json({ success: true, fetched, saved });
     return;
   } catch (error) {

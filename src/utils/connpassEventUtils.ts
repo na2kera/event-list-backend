@@ -71,10 +71,12 @@ const PREF_SHORTS = Object.keys(PREF_MAP);
  * ConnpassイベントをPrismaのEvent型に変換する関数
  * レコメンド情報に必要な最小限のフィールドのみを設定
  * @param connpassEvent Connpass APIから取得したイベント
+ * @param locationOverride 都道府県名を直接指定してlocationを上書きする場合に使用
  * @returns Prisma Event型に変換されたイベント
  */
 export const convertConnpassEventToPrismaEvent = (
-  connpassEvent: ConnpassEventV2
+  connpassEvent: ConnpassEventV2,
+  locationOverride?: string
 ): Event => {
   // イベントタイプの判定（タイトルやタグから推測）
   let eventType: EventType = EventType.WORKSHOP; // デフォルト値
@@ -157,6 +159,10 @@ export const convertConnpassEventToPrismaEvent = (
   // それでも抽出できなければ「不明」
   if (!location) {
     location = "不明";
+  }
+  // locationOverrideが指定されていれば必ず上書き
+  if (locationOverride) {
+    location = locationOverride;
   }
 
   // 必要最小限のフィールドのみを設定
@@ -277,7 +283,9 @@ export const fetchAndConvertConnpassEvents = async (
     );
 
     // フィルタリングしたイベントをPrismaのEvent型に変換
-    const events = filteredEvents.map(convertConnpassEventToPrismaEvent);
+    const events = filteredEvents.map((event) =>
+      convertConnpassEventToPrismaEvent(event)
+    );
     return events;
   } catch (error) {
     console.error("Connpass APIからイベントを取得できませんでした:", error);
@@ -346,10 +354,31 @@ export const fetchConnpassEventsByKeywords = async (
     );
 
     // 取得したイベントをPrismaのEvent型に変換
-    const events = apiResponse.events.map(convertConnpassEventToPrismaEvent);
+    const events = apiResponse.events.map((event) =>
+      convertConnpassEventToPrismaEvent(event)
+    );
     return events;
   } catch (error) {
     console.error("Connpassイベント取得エラー:", error);
     return [];
   }
 };
+
+/**
+ * place/addressから都道府県名（正式名称）を抽出する
+ * @param place 開催場所
+ * @param address 住所
+ * @returns 都道府県名（例：東京都）またはnull
+ */
+export function detectPrefectureFromPlace(
+  place?: string | null,
+  address?: string | null
+): string | null {
+  const locationSource = `${place ?? ""} ${address ?? ""}`;
+  for (const short of PREF_SHORTS) {
+    if (locationSource.includes(short)) {
+      return PREF_MAP[short];
+    }
+  }
+  return null;
+}
