@@ -140,10 +140,17 @@ export const getFilteredEvents = async (options: {
 
     // 場所でフィルタリング
     if (options.location) {
-      where.location = {
-        contains: options.location,
-        mode: "insensitive",
-      };
+      where.OR = [
+        {
+          location: {
+            contains: options.location,
+            mode: "insensitive",
+          },
+        },
+        {
+          location: "不明",
+        },
+      ];
     }
 
     // 日付範囲でフィルタリング
