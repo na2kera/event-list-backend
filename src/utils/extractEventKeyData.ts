@@ -7,7 +7,13 @@ import { textrankKeywordExtractor as textrankKeywordExtractorV3 } from "./keywor
  * 返却オブジェクトのプロパティ名は DB のカラム (keywords, keyPhrases, keySentences) に対応。
  */
 export const extractEventKeyData = async (description: string) => {
-  const safeText = description ?? "";
+  const stripHtml = (html: string): string =>
+    html
+      .replace(/<[^>]*>/g, " ") // タグ削除
+      .replace(/&[a-z]+;/g, " ") // エンティティ簡易除去
+      .replace(/\s+/g, " ")
+      .trim();
+  const safeText = description ? stripHtml(description) : "";
 
   try {
     const [keyPhrases, keySentences, keywords] = await Promise.all([
