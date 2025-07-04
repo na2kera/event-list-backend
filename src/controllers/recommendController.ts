@@ -147,7 +147,17 @@ export const recommendByMessage: RequestHandler = async (req, res, next) => {
       eventKeyData
     );
 
-    if (!recommendations || recommendations.length === 0) {
+    // eventKeyDataをidでマージして、全イベント情報をeventに含める
+    const eventMap = new Map(events.map((ev) => [ev.id, ev]));
+    const enrichedRecommendations = recommendations.map((rec) => ({
+      ...rec,
+      event: {
+        ...eventMap.get(rec.event.id),
+        ...rec.event,
+      },
+    }));
+
+    if (!enrichedRecommendations || enrichedRecommendations.length === 0) {
       res.status(200).json({
         query: recommendInput,
         recommendations: [],
@@ -161,11 +171,14 @@ export const recommendByMessage: RequestHandler = async (req, res, next) => {
     if (process.env.NODE_ENV !== "production") {
       console.log(
         `[recommendByMessage] message/tags=\"${recommendInput}\" recommendations:\n`,
-        JSON.stringify(recommendations, null, 2)
+        JSON.stringify(enrichedRecommendations, null, 2)
       );
     }
 
-    res.json({ query: recommendInput, recommendations });
+    res.json({
+      query: recommendInput,
+      recommendations: enrichedRecommendations,
+    });
     return;
   } catch (err) {
     next(err);
