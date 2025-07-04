@@ -2,7 +2,7 @@ import axios from "axios";
 import prisma from "../config/prisma";
 import {
   convertConnpassEventToPrismaEvent,
-  detectPrefectureFromPlace,
+  detectLocationFromAddress,
 } from "../utils/connpassEventUtils";
 import { extractEventKeyData } from "../utils/extractEventKeyData";
 
@@ -124,16 +124,18 @@ export const fetchAndSaveLatestEvents = async (
 ): Promise<{ fetched: number; saved: number }> => {
   if (!apiKey) throw new Error("CONNPASS_API_KEY is required");
 
-  // 最新100件（開催日問わず）を新着順で取得
+  // 新着順で100件取得
   const response = await fetchConnpassEventsV2({
     api_key: apiKey,
     order: 3, // 新着順
     count: 100,
   });
 
-  const events = response.events.map((event) =>
-    convertConnpassEventToPrismaEvent(event)
-  );
+  const events = response.events.map((event) => {
+    // address/placeからlocationを判定
+    const location = detectLocationFromAddress(event.place, event.address);
+    return convertConnpassEventToPrismaEvent(event, location);
+  });
 
   let saved = 0;
   for (const ev of events) {
@@ -256,9 +258,8 @@ export const fetchAndSaveAllPrefectureEvents = async (
       try {
         const { keywords, keyPhrases, keySentences } =
           await extractEventKeyData(ev.description || "");
-        // place/addressから都道府県名を抽出
-        const detectedPref = detectPrefectureFromPlace(ev.place, ev.address);
-        const locationToSave = detectedPref || pref.ja;
+        // address/placeからlocationを判定
+        const locationToSave = detectLocationFromAddress(ev.place, ev.address);
         const eventData = convertConnpassEventToPrismaEvent(ev, locationToSave);
         await prisma.event.upsert({
           where: { id: eventData.id },

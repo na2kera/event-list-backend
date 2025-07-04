@@ -50,9 +50,7 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
       }
     }
 
-    // const events = await getFilteredEvents(filterOpts);
-    const events = await getAllEvents();
-
+    const events = await getFilteredEvents(filterOpts);
     const eventKeyData: EventKeyData[] = events.map((ev: any) => ({
       id: ev.id,
       title: ev.title,

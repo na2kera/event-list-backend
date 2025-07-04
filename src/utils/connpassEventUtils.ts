@@ -365,20 +365,32 @@ export const fetchConnpassEventsByKeywords = async (
 };
 
 /**
- * place/addressから都道府県名（正式名称）を抽出する
+ * place/addressからlocation（都道府県名 or オンライン or 不明）を判定
  * @param place 開催場所
  * @param address 住所
- * @returns 都道府県名（例：東京都）またはnull
+ * @returns 都道府県名（例：東京都）、オンライン、不明
  */
-export function detectPrefectureFromPlace(
+export function detectLocationFromAddress(
   place?: string | null,
   address?: string | null
-): string | null {
-  const locationSource = `${place ?? ""} ${address ?? ""}`;
+): string {
+  const locationSource = `${place ?? ""} ${address ?? ""}`.toLowerCase();
+  // オンライン判定
+  if (
+    locationSource.includes("オンライン") ||
+    locationSource.includes("online") ||
+    locationSource.includes("zoom") ||
+    locationSource.includes("teams") ||
+    locationSource.includes("virtual")
+  ) {
+    return "オンライン";
+  }
+  // 都道府県名判定
   for (const short of PREF_SHORTS) {
     if (locationSource.includes(short)) {
       return PREF_MAP[short];
     }
   }
-  return null;
+  // どちらも該当しなければ「不明」
+  return "不明";
 }
