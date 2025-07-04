@@ -31,7 +31,9 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
 
     const tags: string[] = (user.tag as any) || [];
     if (tags.length === 0) {
-      res.status(200).json({ message: "興味タグが未設定", data: [] });
+      res
+        .status(200)
+        .json({ success: true, message: "興味タグが未設定", data: [] });
       return;
     }
 
@@ -59,7 +61,11 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
     if (eventKeyData.length === 0) {
       res
         .status(200)
-        .json({ message: "該当する場所のイベントがありません。", data: [] });
+        .json({
+          success: true,
+          message: "該当する場所のイベントがありません。",
+          data: [],
+        });
       return;
     }
 
@@ -86,7 +92,7 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
       );
     }
 
-    res.json(results);
+    res.json({ success: true, data: results });
     return;
   } catch (err) {
     next(err);
