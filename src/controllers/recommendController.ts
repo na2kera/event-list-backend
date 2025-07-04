@@ -91,9 +91,11 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
  */
 export const recommendByMessage: RequestHandler = async (req, res, next) => {
   try {
-    const { userId, message } = req.body;
-    if (!message) {
-      res.status(400).json({ message: "message は必須です" });
+    const { userId, message, tags } = req.body;
+    if (!message && (!tags || tags.length === 0)) {
+      res
+        .status(400)
+        .json({ message: "message または tags のいずれかは必須です" });
       return;
     }
 
@@ -132,20 +134,38 @@ export const recommendByMessage: RequestHandler = async (req, res, next) => {
       return;
     }
 
+    // messageとtags両方を考慮してレコメンド
+    let recommendInput = message;
+    if (!recommendInput && tags && tags.length > 0) {
+      recommendInput = tags.join("・");
+    } else if (recommendInput && tags && tags.length > 0) {
+      recommendInput = message + "・" + tags.join("・");
+    }
+
     const recommendations = await recommendEventsWithKeyData(
-      message,
+      recommendInput,
       eventKeyData
     );
+
+    if (!recommendations || recommendations.length === 0) {
+      res.status(200).json({
+        query: recommendInput,
+        recommendations: [],
+        message:
+          "ご希望に合うイベントが見つかりませんでした。条件を変えて再度お試しください。",
+      });
+      return;
+    }
 
     // 開発用ログ
     if (process.env.NODE_ENV !== "production") {
       console.log(
-        `[recommendByMessage] message=\"${message}\" recommendations:\n`,
+        `[recommendByMessage] message/tags=\"${recommendInput}\" recommendations:\n`,
         JSON.stringify(recommendations, null, 2)
       );
     }
 
-    res.json({ query: message, recommendations });
+    res.json({ query: recommendInput, recommendations });
     return;
   } catch (err) {
     next(err);
