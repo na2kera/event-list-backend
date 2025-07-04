@@ -33,9 +33,9 @@ export interface RankedEvent {
  * LLMによる推薦イベントの型定義
  */
 export interface LLMRecommendedEvent {
-  eventId: string;
-  title: string;
-  relevanceScore: number; // 0-100の関連性スコア
+  eventId?: string;
+  title?: string;
+  relevanceScore?: number; // 0-100の関連性スコア
 }
 
 /**
