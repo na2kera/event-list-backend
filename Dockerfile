@@ -10,7 +10,8 @@ ENV NODE_OPTIONS="--max-old-space-size=8192 --max-semi-space-size=512"
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install all dependencies
-COPY package*.json ./
+COPY package.json ./
+COPY package-lock.json ./
 RUN npm ci
 
 # Copy source code
@@ -31,7 +32,8 @@ WORKDIR /app
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy package files and install only production dependencies
-COPY package*.json ./
+COPY package.json ./
+COPY package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built application from build stage
