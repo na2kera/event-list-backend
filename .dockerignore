@@ -100,4 +100,21 @@ data/
 # Database files
 *.db
 *.sqlite
-*.sqlite3 
+*.sqlite3
+
+# Additional files
+README.md
+.eslintrc.js
+.prettierrc
+.prettierignore
+.lock-wscript
+build/Release
+.serverless
+.fusebox
+.dynamodb
+.tern-port
+scripts/similarityTest.ts
+scripts/mockEventData.ts 
+
+
+
