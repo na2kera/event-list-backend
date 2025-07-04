@@ -880,6 +880,17 @@ export const textrankKeySentenceExtractor = async (
   text: string,
   aiConfig: Partial<AISentenceConfig> = {}
 ): Promise<string[]> => {
+  // HTMLタグ・エンティティ除去（返却直前に使用）
+  const stripHtml = (html: string): string =>
+    html
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&[a-z]+;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const sanitize = (arr: string[]): string[] =>
+    arr.map(stripHtml).filter((s) => s.length > 0);
+
   const startTime = Date.now();
 
   try {
@@ -887,7 +898,7 @@ export const textrankKeySentenceExtractor = async (
 
     if (!text || typeof text !== "string" || text.trim().length === 0) {
       console.log("⚠️ 入力テキストが無効です。");
-      return [];
+      return sanitize([]);
     }
 
     const finalAIConfig: AISentenceConfig = {
@@ -899,7 +910,7 @@ export const textrankKeySentenceExtractor = async (
 
     if (rawSentences.length < 2) {
       console.log("⚠️ 分析に十分な文がありません。");
-      return rawSentences.slice(0, finalAIConfig.maxSentences);
+      return sanitize(rawSentences.slice(0, finalAIConfig.maxSentences));
     }
 
     console.log(`📊 ${rawSentences.length}文を分析します...`);
@@ -920,7 +931,9 @@ export const textrankKeySentenceExtractor = async (
 
     if (sentences.length < 2) {
       console.log("⚠️ 有効な文が少なすぎます。");
-      return sentences.map((s) => s.text).slice(0, finalAIConfig.maxSentences);
+      return sanitize(
+        sentences.map((s) => s.text).slice(0, finalAIConfig.maxSentences)
+      );
     }
 
     const similarityMatrix = buildSimilarityMatrix(sentences);
@@ -950,7 +963,7 @@ export const textrankKeySentenceExtractor = async (
 
     if (!finalAIConfig.enableAI) {
       console.log("🔄 AI生成無効化：TextRank結果のみ返却");
-      return textRankResults;
+      return sanitize(textRankResults);
     }
 
     try {
@@ -960,11 +973,11 @@ export const textrankKeySentenceExtractor = async (
         finalAIConfig
       );
 
-      const finalResults = enhancedResults.map((result) => result.sentence);
+      const finalResultsRaw = enhancedResults.map((result) => result.sentence);
 
       const processingTime = Date.now() - startTime;
       console.log(
-        `✅ TextRank + AI キーセンテンス生成完了 (${processingTime}ms): ${finalResults.length}個のセンテンス`
+        `✅ TextRank + AI キーセンテンス生成完了 (${processingTime}ms): ${finalResultsRaw.length}個のセンテンス`
       );
       console.log("🎯 最終結果（タイプ別分析）:");
 
@@ -987,15 +1000,15 @@ export const textrankKeySentenceExtractor = async (
 
       console.log("📊 タイプ分布:", typeCounts);
       console.log("🎯 生成されたキーセンテンス:");
-      finalResults.forEach((sentence, index) => {
+      finalResultsRaw.forEach((sentence, index) => {
         console.log(`  ${index + 1}. ${sentence}`);
       });
 
-      return finalResults;
+      return sanitize(finalResultsRaw);
     } catch (aiError) {
       console.error("❌ AIキーセンテンス生成処理エラー:", aiError);
       console.log("🔄 AI生成失敗：TextRank結果のみ返却");
-      return textRankResults;
+      return sanitize(textRankResults);
     }
   } catch (error) {
     console.error("❌ キーセンテンス抽出処理で予期せぬエラー:", error);
@@ -1003,10 +1016,10 @@ export const textrankKeySentenceExtractor = async (
     try {
       console.log("🔄 フォールバック処理を実行中...");
       const fallbackSentences = splitIntoSentences(text).slice(0, 5);
-      return fallbackSentences;
+      return sanitize(fallbackSentences);
     } catch (fallbackError) {
       console.error("❌ フォールバック処理もエラー:", fallbackError);
-      return [];
+      return sanitize([]);
     }
   }
 };

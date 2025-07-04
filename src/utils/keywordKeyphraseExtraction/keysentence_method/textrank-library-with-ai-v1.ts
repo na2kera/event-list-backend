@@ -1008,13 +1008,16 @@ export const textrankKeyphraseExtractor = async (
 ): Promise<string[]> => {
   const startTime = Date.now();
 
-  // HTMLタグ除去ユーティリティ（関数全体で使えるように関数スコープに配置）
+  // HTMLタグ除去ユーティリティ（返却直前用）
   const stripHtml = (html: string): string =>
     html
-      .replace(/<[^>]*>/g, " ") // タグ削除
-      .replace(/&[a-z]+;/g, " ") // エンティティ簡易除去
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&[a-z]+;/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+
+  const sanitize = (arr: string[]): string[] =>
+    arr.map(stripHtml).filter((p) => p.length > 0);
 
   // 最低返却数を保証するユーティリティ
   const ensureMinResults = (
@@ -1051,10 +1054,8 @@ export const textrankKeyphraseExtractor = async (
 
     if (rawSentences.length < 2) {
       console.log("⚠️ 分析に十分な文がありません。");
-      return ensureMinResults(
-        rawSentences.slice(0, 5),
-        splitIntoSentences(text).map(stripHtml),
-        3
+      return sanitize(
+        ensureMinResults(rawSentences.slice(0, 5), splitIntoSentences(text), 3)
       );
     }
 
@@ -1077,10 +1078,12 @@ export const textrankKeyphraseExtractor = async (
 
     if (sentences.length < 2) {
       console.log("⚠️ 有効な文が少なすぎます。");
-      return ensureMinResults(
-        sentences.map((s) => s.text).slice(0, 5),
-        splitIntoSentences(text).map(stripHtml),
-        3
+      return sanitize(
+        ensureMinResults(
+          sentences.map((s) => s.text).slice(0, 5),
+          splitIntoSentences(text),
+          3
+        )
       );
     }
 
@@ -1115,10 +1118,8 @@ export const textrankKeyphraseExtractor = async (
 
     if (!finalAIConfig.enableAI) {
       console.log("🔄 AI精製無効化：TextRank結果のみ返却");
-      return ensureMinResults(
-        textRankResults.map(stripHtml).filter((p) => p.length > 0),
-        splitIntoSentences(text).map(stripHtml),
-        3
+      return sanitize(
+        ensureMinResults(textRankResults, splitIntoSentences(text), 3)
       );
     }
 
@@ -1129,13 +1130,11 @@ export const textrankKeyphraseExtractor = async (
         finalAIConfig
       );
 
-      const finalResults = enhancedResults
-        .map((result) => stripHtml(result.phrase))
-        .filter((p) => p.length > 0);
+      const finalResultsRaw = enhancedResults.map((r) => r.phrase);
 
       const processingTime = Date.now() - startTime;
       console.log(
-        `✅ TextRank + AI精製完了 (${processingTime}ms): ${finalResults.length}個のキーフレーズ`
+        `✅ TextRank + AI精製完了 (${processingTime}ms): ${finalResultsRaw.length}個のキーフレーズ`
       );
       console.log("🎯 最終結果（カテゴリ別分析）:");
 
@@ -1158,16 +1157,14 @@ export const textrankKeyphraseExtractor = async (
       });
 
       console.log("📊 カテゴリ分布:", categoryCounts);
-      console.log("🎯 抽出されたキーフレーズ:", finalResults);
+      console.log("🎯 抽出されたキーフレーズ:", finalResultsRaw);
 
-      return ensureMinResults(finalResults, textRankResults.map(stripHtml), 3);
+      return sanitize(ensureMinResults(finalResultsRaw, textRankResults, 3));
     } catch (aiError) {
       console.error("❌ AI精製処理エラー:", aiError);
       console.log("🔄 AI精製失敗：TextRank結果のみ返却");
-      return ensureMinResults(
-        textRankResults.map(stripHtml).filter((p) => p.length > 0),
-        splitIntoSentences(text).map(stripHtml),
-        3
+      return sanitize(
+        ensureMinResults(textRankResults, splitIntoSentences(text), 3)
       );
     }
   } catch (error) {
@@ -1177,10 +1174,8 @@ export const textrankKeyphraseExtractor = async (
     try {
       console.log("🔄 フォールバック処理を実行中...");
       const fallbackSentences = splitIntoSentences(text).slice(0, 5);
-      return ensureMinResults(
-        fallbackSentences.map(stripHtml).filter((p) => p.length > 0),
-        splitIntoSentences(text).map(stripHtml),
-        3
+      return sanitize(
+        ensureMinResults(fallbackSentences, splitIntoSentences(text), 3)
       );
     } catch (fallbackError) {
       console.error("❌ フォールバック処理もエラー:", fallbackError);
