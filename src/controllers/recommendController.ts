@@ -50,9 +50,10 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
     const events = await getFilteredEvents(filterOpts);
     const eventKeyData: EventKeyData[] = events.map((ev: any) => ({
       id: ev.id,
+      title: ev.title,
+      detail: ev.detail,
       keyPhrases: ev.keyPhrases || [],
       keySentences: ev.keySentences || [],
-      ...ev,
     }));
 
     if (eventKeyData.length === 0) {
@@ -118,9 +119,10 @@ export const recommendByMessage: RequestHandler = async (req, res, next) => {
 
     const eventKeyData: EventKeyData[] = events.map((ev: any) => ({
       id: ev.id,
+      title: ev.title,
+      detail: ev.detail,
       keyPhrases: ev.keyPhrases || [],
       keySentences: ev.keySentences || [],
-      ...ev,
     }));
 
     if (eventKeyData.length === 0) {
