@@ -1,6 +1,6 @@
 import { RequestHandler } from "express";
 import { getUserWithDetailsById } from "../utils/userUtils";
-import { getFilteredEvents } from "../utils/eventUtils";
+import { getAllEvents, getFilteredEvents } from "../utils/eventUtils";
 import {
   recommendEventsWithKeyData,
   RecommendedEvent,
@@ -15,6 +15,7 @@ import {
 export const recommendByUser: RequestHandler = async (req, res, next) => {
   try {
     const { userId } = req.body;
+
     if (!userId) {
       res.status(400).json({ message: "userId は必須です" });
       return;
@@ -58,14 +59,14 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
       keySentences: ev.keySentences || [],
     }));
 
+    console.log("eventKeyData", eventKeyData);
+
     if (eventKeyData.length === 0) {
-      res
-        .status(200)
-        .json({
-          success: true,
-          message: "該当する場所のイベントがありません。",
-          data: [],
-        });
+      res.status(200).json({
+        success: true,
+        message: "該当する場所のイベントがありません。",
+        data: [],
+      });
       return;
     }
 
