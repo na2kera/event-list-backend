@@ -66,7 +66,16 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
     const results: { tag: string; recommendations: RecommendedEvent[] }[] = [];
     for (const tag of tags) {
       const recs = await recommendEventsWithKeyData(tag, eventKeyData);
-      results.push({ tag, recommendations: recs });
+      // event.idでDBイベント情報をマージ
+      const eventMap = new Map(events.map((ev: any) => [ev.id, ev]));
+      const enrichedRecs = recs.map((rec) => ({
+        ...rec,
+        event: {
+          ...eventMap.get(rec.event.id),
+          ...rec.event,
+        },
+      }));
+      results.push({ tag, recommendations: enrichedRecs });
     }
 
     // 開発用ログ
