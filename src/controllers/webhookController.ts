@@ -10,9 +10,11 @@ import {
   recommendEventsByKeyword,
 } from "../utils/recommendEvents";
 import { processRagQuery } from "../services/ragService";
-import { getUserByLineId } from "../utils/userUtils";
+import { getUserByLineId, getUserWithDetailsById } from "../utils/userUtils";
 import { recommendEventsByQuery } from "../utils/queryRecommendation";
 import prisma from "../config/prisma"; // ★ Prisma Client をインポート
+import { getFilteredEvents } from "../utils/eventUtils";
+import { recommendEventsWithKeyData } from "../utils/keyDataRecommendation";
 
 /**
  * LINEのWebhookを処理するコントローラー
@@ -191,15 +193,14 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
       }
     }
 
-    // 「レコメンド２」というテキストを受け取った場合の処理（キーワードベース）
+    // 「レコメンド２」というテキストを受け取った場合の処理（keyDataベースに統一）
     else if (messageText === "レコメンド2") {
       try {
         console.log(
-          `ユーザー ${lineUserId} からキーワードベースのレコメンドリクエストを受信しました`
+          `ユーザー ${lineUserId} からkeyDataベースのレコメンドリクエストを受信しました`
         );
-
-        // ユーザー情報が必要
-        const user = await getUserByLineId(lineUserId);
+        // ユーザー情報取得
+        const user = await getUserWithDetailsById(lineUserId);
         if (!user) {
           await sendLineNotificationToUser(
             lineUserId,
@@ -207,29 +208,66 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           );
           return;
         }
-
-        // キーワードベースのレコメンドAPIを呼び出す
-        const recommendedEvents = await recommendEventsByKeyword(user.id);
-
-        // イベントIDの配列を取得
-        const eventIds = recommendedEvents.map((event) => event.eventId);
-
+        const tags = (user.tag as any) || [];
+        if (tags.length === 0) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "興味タグが未設定です。プロフィールから興味タグを設定してください。"
+          );
+          return;
+        }
+        // 場所・形式でイベントをフィルタ
+        const locationRaw = (user.place || "").toString();
+        const locLower = locationRaw.toLowerCase();
+        const filterOpts: any = {};
+        if (locationRaw) {
+          if (locLower === "online") {
+            filterOpts.format = "ONLINE";
+          } else {
+            filterOpts.location = locationRaw;
+          }
+        }
+        const events = await getFilteredEvents(filterOpts);
+        const eventKeyData = events.map((ev: any) => ({
+          id: ev.id,
+          title: ev.title,
+          detail: ev.detail,
+          keyPhrases: ev.keyPhrases || [],
+          keySentences: ev.keySentences || [],
+        }));
+        if (eventKeyData.length === 0) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "該当する場所のイベントがありません。"
+          );
+          return;
+        }
+        // 興味タグごとにレコメンド
+        let allEventIds: string[] = [];
+        for (const tag of tags) {
+          const recs = await recommendEventsWithKeyData(tag, eventKeyData);
+          allEventIds.push(...recs.map((rec) => rec.event.id));
+        }
+        // 重複排除
+        allEventIds = [...new Set(allEventIds)];
+        if (allEventIds.length === 0) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "ご希望に合うイベントが見つかりませんでした。条件を変えて再度お試しください。"
+          );
+          return;
+        }
         // イベントカルーセルを送信
-        await sendEventCarouselToUser(user.id, eventIds);
-
-        // ユーザーにレコメンドタイプを通知
+        await sendEventCarouselToUser(user.id, allEventIds);
         await sendLineNotificationToUser(
           lineUserId,
-          "キーワードベースのレコメンド結果です。関連性スコア70以上のイベントを表示しています。"
+          "keyData（キーフレーズ/キーセンテンス）ベースのレコメンド結果です。"
         );
-
         console.log(
-          `ユーザー ${lineUserId} にキーワードベースのレコメンド結果を送信しました`
+          `ユーザー ${lineUserId} にkeyDataベースのレコメンド結果を送信しました`
         );
       } catch (error) {
         console.error("レコメンド処理エラー:", error);
-
-        // エラーが発生した場合はユーザーに通知
         await sendLineNotificationToUser(
           lineUserId,
           "レコメンドの取得中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
@@ -280,48 +318,71 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
       }
     }
 
-    // 上記以外のテキストメッセージはRAGで処理
+    // 上記以外のテキストメッセージはkeyDataベースのテキストレコメンドに統一
     else {
       try {
         console.log(`ユーザー ${lineUserId} からの質問: ${messageText}`);
-
         // ユーザー情報を取得
-        const user = await getUserByLineId(lineUserId);
+        const user = await getUserWithDetailsById(lineUserId);
         if (!user) {
-          throw new Error(`ユーザー情報が見つかりません: ${lineUserId}`);
-        }
-
-        // 質問ベースのイベント推薦を実行
-        console.log(`質問ベースのイベント推薦を実行します: "${messageText}"`);
-        const recommendedEvents = await recommendEventsByQuery(
-          messageText,
-          user.id
-        );
-
-        if (recommendedEvents.length > 0) {
-          // イベントIDの配列を取得
-          const eventIds = recommendedEvents.map((event) => event.eventId);
-
-          // イベントカルーセルを送信
-          await sendEventCarouselToUser(user.id, eventIds);
-          console.log(
-            `ユーザー ${lineUserId} に質問ベースのイベントカルーセルを送信しました: ${eventIds.length}件`
-          );
-        } else {
-          // 関連イベントが見つからない場合はメッセージを送信
           await sendLineNotificationToUser(
             lineUserId,
-            "お探しの条件に合うイベントは見つかりませんでした。別のキーワードや条件で探してみてください。"
+            "ユーザー情報が見つかりません。まずはプロフィール設定をお願いします。"
           );
-          console.log("質問に関連するイベントが見つかりませんでした");
+          return;
         }
-      } catch (error) {
-        console.error("質問ベースのイベント推薦エラー:", error);
-
-        // エラーが発生した場合はユーザーに通知
+        // 場所・形式でイベントをフィルタ
+        const locationRaw = (user.place || "").toString();
+        const locLower = locationRaw.toLowerCase();
+        const filterOpts: any = {};
+        if (locationRaw) {
+          if (locLower === "online") {
+            filterOpts.format = "ONLINE";
+          } else {
+            filterOpts.location = locationRaw;
+          }
+        }
+        const events = await getFilteredEvents(filterOpts);
+        const eventKeyData = events.map((ev: any) => ({
+          id: ev.id,
+          title: ev.title,
+          detail: ev.detail,
+          keyPhrases: ev.keyPhrases || [],
+          keySentences: ev.keySentences || [],
+        }));
+        if (eventKeyData.length === 0) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "該当する場所のイベントがありません。"
+          );
+          return;
+        }
+        // テキストでレコメンド
+        const recs = await recommendEventsWithKeyData(
+          messageText,
+          eventKeyData
+        );
+        const eventIds = recs.map((rec) => rec.event.id);
+        if (eventIds.length === 0) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "ご希望に合うイベントが見つかりませんでした。条件を変えて再度お試しください。"
+          );
+          return;
+        }
+        await sendEventCarouselToUser(user.id, eventIds);
         await sendLineNotificationToUser(
           lineUserId,
-          "質問の処理中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
+          "keyData（キーフレーズ/キーセンテンス）ベースのテキストレコメンド結果です。"
+        );
+        console.log(
+          `ユーザー ${lineUserId} にkeyDataベースのテキストレコメンド結果を送信しました`
+        );
+      } catch (error) {
+        console.error("テキストレコメンド処理エラー:", error);
+        await sendLineNotificationToUser(
+          lineUserId,
+          "テキストレコメンドの取得中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
         );
       }
     }

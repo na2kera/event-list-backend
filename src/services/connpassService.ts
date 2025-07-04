@@ -38,9 +38,9 @@ export interface ConnpassEventV2 {
 }
 
 export interface ConnpassResponseV2 {
-  total: number; // 全件数
-  count: number; // 取得件数
-  offset: number; // オフセット
+  total?: number; // 全件数 (v2 は results_available などの場合あり)
+  count?: number; // 取得件数
+  offset?: number; // オフセット
   events: ConnpassEventV2[]; // イベント一覧
 }
 
@@ -60,6 +60,7 @@ export interface ConnpassSearchParamsV2 {
   tag?: string | string[]; // タグ（新機能）
   prefectures?: string; // 都道府県（カンマ区切り）
   offset?: number; // オフセット（旧start）
+  start?: number; // ページ開始インデックス（v2 でも利用可能）
   order?: 1 | 2 | 3; // 表示順（1: 更新日時順、2: 開催日時順、3: 新着順）
   count?: number; // 取得件数（最大100）
 }
@@ -97,9 +98,11 @@ export const fetchConnpassEventsV2 = async (
       },
     });
 
-    console.log(
-      `Connpass API V2: ${response.data.count}件取得（全${response.data.total}件中）`
-    );
+    const got = Array.isArray(response.data.events)
+      ? response.data.events.length
+      : 0;
+    const total = (response.data.total as number | undefined) ?? "?";
+    console.log(`Connpass API V2: ${got}件取得（全${total}件中）`);
 
     return response.data;
   } catch (error) {

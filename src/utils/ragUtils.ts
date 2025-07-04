@@ -132,7 +132,7 @@ export const computeInterestWeights = (
 ): Promise<ScoredEvent[]> => computeInterestWeightsFlexible(userTag, events);
 
 /**
- * ユーザーの興味タグとイベント要素の最近傍探索（モック実装）
+ * 類似度スコア計算（モック実装）
  * @param userTag ユーザーが設定した興味タグ
  * @param events   キーワードが抽出済みのイベント配列
  * @returns        類似度スコア付きイベント。スコアは 0〜1 に正規化されている
@@ -269,27 +269,52 @@ export const rerankEventsRRF = async (
   events: EventWithDetails[],
   k: number = 60
 ): Promise<ScoredEvent[]> => {
+  console.log("\n=== RRF リランキング開始 ===");
+  console.log(
+    `ユーザータグ: ${userTag}, イベント数: ${events.length}, k: ${k}`
+  );
+
   // keySentence と keyword それぞれのランキング作成
   const keyRank: { id: string; sim: number }[] = [];
   const kwRank: { id: string; sim: number }[] = [];
 
+  // 各イベントの類似度を計算
   for (const ev of events) {
-    // keySentences: ベスト類似度
-    let bestS = 0;
-    for (const s of ev.keySentences) {
-      const sim = await similarityToTag(userTag, s);
-      if (sim > bestS) bestS = sim;
-    }
-    keyRank.push({ id: ev.id, sim: bestS });
+    // keySentences の最大類似度
+    const keySims = await Promise.all(
+      ev.keySentences.map((s) => similarityToTag(userTag, s))
+    );
+    const maxKeySim = keySims.length > 0 ? Math.max(...keySims) : 0;
+    keyRank.push({ id: ev.id, sim: maxKeySim });
 
-    // keywords は連結して比較
-    const kwSim = await similarityToTag(userTag, ev.keywords.join(" "));
-    kwRank.push({ id: ev.id, sim: kwSim });
+    // keywords の類似度平均
+    const kwSims = await Promise.all(
+      ev.keywords.map((kw) => similarityToTag(userTag, kw))
+    );
+    const avgKwSim =
+      kwSims.length > 0 ? kwSims.reduce((a, b) => a + b, 0) / kwSims.length : 0;
+    kwRank.push({ id: ev.id, sim: avgKwSim });
   }
 
   // 類似度降順ソート
   keyRank.sort((a, b) => b.sim - a.sim);
   kwRank.sort((a, b) => b.sim - a.sim);
+
+  // デバッグ出力
+  console.log("\n=== 類似度スコア (上位5件) ===");
+  console.log("キーセンテンス類似度 (降順):");
+  keyRank.slice(0, 5).forEach((item, i) => {
+    console.log(
+      `  ${i + 1}. イベントID: ${item.id}, スコア: ${item.sim.toFixed(4)}`
+    );
+  });
+
+  console.log("\nキーワード類似度 (降順):");
+  kwRank.slice(0, 5).forEach((item, i) => {
+    console.log(
+      `  ${i + 1}. イベントID: ${item.id}, スコア: ${item.sim.toFixed(4)}`
+    );
+  });
 
   // RRF スコア
   const scores: Record<string, number> = {};
@@ -300,13 +325,58 @@ export const rerankEventsRRF = async (
     scores[item.id] = (scores[item.id] || 0) + 1 / (k + idx + 1);
   });
 
-  return events
+  const result = events
     .map((ev) => ({ id: ev.id, score: scores[ev.id] || 0 }))
     .sort((a, b) => b.score - a.score);
+
+  // 結果のデバッグ出力
+  console.log("\n=== RRF リランキング結果 (上位10件) ===");
+  result.slice(0, 10).forEach((item, i) => {
+    console.log(
+      `  ${i + 1}. イベントID: ${item.id}, スコア: ${item.score.toFixed(6)}`
+    );
+  });
+
+  return result;
 };
 
 // ====================== LLM 最終フィルタリング ======================
-const llmSystemPrompt = `あなたは学生エンジニア向けイベントの推薦アシスタントです。\n与えられた興味タグとイベント候補リストをもとに、ユーザーに本当に推薦すべきイベントIDのみを厳密なJSON配列で返してください。\n説明や余分なテキストは一切含めないでください。候補がない場合は空配列[]を返してください。例:\n[\n  \"event-id-1\", \"event-id-3\"\n]`;
+const llmSystemPrompt = `あなたは、学生エンジニア一人ひとりの状況と願望を深く理解する、優秀なパーソナル・イベントアドバイザーです。
+
+# 指示
+ユーザーの「興味タグ」を分析してペルソナを推定し、提供された「イベント候補リスト」の中から、そのペルソナにとって最も価値のあるイベントだけを最大5件まで厳選してください。
+
+# 思考プロセス
+1.  **ペルソナ抽出:** まず、「興味タグ」からユーザーの【レベル感】（例：初心者、中級者）と【目的】（例：実践的スキル習得、就職活動、高度な情報収集）を深く読み取ります。
+2.  **ペルソナに基づく評価:** 次に、そのペルソナの視点に立ち、以下の【評価基準】に従って各イベントを評価します。
+
+# 評価基準
+
+### 1. 【最重要】ペルソナとの目的適合性
+抽出したペルソナの【目的】と、イベントが提供する主要な価値が完全に一致しているかを最優先で判断します。**イベントの形式や価格といった特徴は、この目的適合性を評価するための材料として使います。**
+
+-   **例1：ペルソナの目的が「実践的スキル習得」の場合**
+    -   手を動かす「ハンズオン」「ワークショップ」形式を最も高く評価します。
+-   **例2：ペルソナの目的が「就職活動」の場合**
+    -   「企業交流会」「インターンシップ直結」といったキャリアに繋がる価値を最も高く評価します。
+-   **例3：ペルソナの目的が「高度な情報収集」の場合**
+    -   著名な技術者が登壇する「カンファレンス」や専門的な「勉強会」を最も高く評価します。
+
+### 2. 内容とレベルの関連性
+- 興味タグの技術要素と、ペルソナの【レベル感】の両方に合致しているか。
+- （例：初心者のペルソナに、前提知識が必要な上級者向けイベントを推薦しない）
+
+### 3. 参加コストの合理性
+- 参加費は、上記で判断した**「ペルソナの目的と得られる価値」に見合っているか**を評価します。
+- （例：就活目的の学生にとって、価値ある企業交流会なら有料でも合理的。初心者の探求段階では無料が望ましい、など）
+
+# 出力ルール
+- 厳密なJSON配列形式で返してください。
+- 各要素は {{\"id\": \"<string>\", \"reason\": \"<string>\"}} 形式とします。
+- reason には、なぜそのペルソナに推薦するのか、理由を最大50文字で具体的に記述してください。
+- 説明や余分なテキストは一切含めず、JSONのみを出力してください。
+- 推薦すべき候補がない場合は、空の配列 [] を返してください。
+`;
 
 /**
  * LLMを用いて最終的に推薦イベントを絞り込む
@@ -320,14 +390,33 @@ export const filterEventsWithLLM = async (
   topK: number = 10
 ): Promise<RecommendedEvent[]> => {
   if (rankedEvents.length === 0) return [];
-  const llm = new ChatOpenAI({ modelName: "gpt-4o", temperature: 0 });
+  const llm = new ChatOpenAI({
+    // modelName: "gpt-3.5-turbo",
+    modelName: "ft:gpt-3.5-turbo-0125:personal::BpC4PRxL",
+    temperature: 0,
+  });
 
-  // 上位候補のみ渡す
-  const candidates = rankedEvents.slice(0, topK).map((r) => r.event);
+  // 上位候補のみ渡す（スコア0.013以上にフィルタリング）
+  const candidates = rankedEvents
+    .filter((event) => event.score >= 0.013)
+    .slice(0, topK)
+    .map(({ event }) => ({
+      id: event.id,
+      title: event.title,
+      detail: event.detail,
+    }));
+
+  console.log(`フィルタリング後候補数: ${candidates.length}件`);
+
+  if (candidates.length === 0) {
+    console.log("フィルタリング後、候補が0件のため空の配列を返します");
+    return [];
+  }
+
   const jsonEscaped = JSON.stringify(candidates, null, 2)
     .replace(/\{/g, "{{")
     .replace(/\}/g, "}}");
-  const humanMsg = `# 興味タグ\n${interestTag}\n\n# イベント候補(JSON)\n\u0060\u0060\u0060json\n${jsonEscaped}\n\u0060\u0060\u0060\n推薦すべきイベントIDをJSON配列で回答してください`;
+  const humanMsg = `# 興味タグ\n${interestTag}\n\n# イベント候補(JSON)\n\u0060\u0060\u0060json\n${jsonEscaped}\n\u0060\u0060\u0060\n推薦すべきイベントをJSON配列で回答してください`;
 
   const prompt = ChatPromptTemplate.fromMessages([
     SystemMessagePromptTemplate.fromTemplate(llmSystemPrompt),
@@ -336,9 +425,14 @@ export const filterEventsWithLLM = async (
 
   try {
     const response = await prompt.pipe(llm).invoke({});
-    const ids = JSON.parse(response.content as string) as string[];
-    const idSet = new Set(ids);
-    return rankedEvents.filter((r) => idSet.has(r.event.id));
+    const parsed = JSON.parse(response.content as string) as {
+      id: string;
+      reason?: string;
+    }[];
+    const reasonMap = new Map(parsed.map((p) => [p.id, p.reason ?? ""]));
+    return rankedEvents
+      .filter((r) => reasonMap.has(r.event.id))
+      .map((r) => ({ ...r, reason: reasonMap.get(r.event.id) }));
   } catch (e) {
     console.error("LLMフィルタリング失敗", e);
     // 失敗時は元の順位上位 topK を返す

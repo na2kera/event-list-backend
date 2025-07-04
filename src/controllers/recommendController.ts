@@ -31,7 +31,9 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
 
     const tags: string[] = (user.tag as any) || [];
     if (tags.length === 0) {
-      res.status(200).json({ message: "興味タグが未設定", data: [] });
+      res
+        .status(200)
+        .json({ success: true, message: "興味タグが未設定", data: [] });
       return;
     }
 
@@ -50,22 +52,36 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
     const events = await getFilteredEvents(filterOpts);
     const eventKeyData: EventKeyData[] = events.map((ev: any) => ({
       id: ev.id,
+      title: ev.title,
+      detail: ev.detail,
       keyPhrases: ev.keyPhrases || [],
       keySentences: ev.keySentences || [],
-      ...ev,
     }));
 
     if (eventKeyData.length === 0) {
       res
         .status(200)
-        .json({ message: "該当する場所のイベントがありません。", data: [] });
+        .json({
+          success: true,
+          message: "該当する場所のイベントがありません。",
+          data: [],
+        });
       return;
     }
 
     const results: { tag: string; recommendations: RecommendedEvent[] }[] = [];
     for (const tag of tags) {
       const recs = await recommendEventsWithKeyData(tag, eventKeyData);
-      results.push({ tag, recommendations: recs });
+      // event.idでDBイベント情報をマージ
+      const eventMap = new Map(events.map((ev: any) => [ev.id, ev]));
+      const enrichedRecs = recs.map((rec) => ({
+        ...rec,
+        event: {
+          ...eventMap.get(rec.event.id),
+          ...rec.event,
+        },
+      }));
+      results.push({ tag, recommendations: enrichedRecs });
     }
 
     // 開発用ログ
@@ -76,7 +92,7 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
       );
     }
 
-    res.json(results);
+    res.json({ success: true, data: results });
     return;
   } catch (err) {
     next(err);
@@ -90,9 +106,11 @@ export const recommendByUser: RequestHandler = async (req, res, next) => {
  */
 export const recommendByMessage: RequestHandler = async (req, res, next) => {
   try {
-    const { userId, message } = req.body;
-    if (!message) {
-      res.status(400).json({ message: "message は必須です" });
+    const { userId, message, tags } = req.body;
+    if (!message && (!tags || tags.length === 0)) {
+      res
+        .status(400)
+        .json({ message: "message または tags のいずれかは必須です" });
       return;
     }
 
@@ -118,9 +136,10 @@ export const recommendByMessage: RequestHandler = async (req, res, next) => {
 
     const eventKeyData: EventKeyData[] = events.map((ev: any) => ({
       id: ev.id,
+      title: ev.title,
+      detail: ev.detail,
       keyPhrases: ev.keyPhrases || [],
       keySentences: ev.keySentences || [],
-      ...ev,
     }));
 
     if (eventKeyData.length === 0) {
@@ -130,20 +149,51 @@ export const recommendByMessage: RequestHandler = async (req, res, next) => {
       return;
     }
 
+    // messageとtags両方を考慮してレコメンド
+    let recommendInput = message;
+    if (!recommendInput && tags && tags.length > 0) {
+      recommendInput = tags.join("・");
+    } else if (recommendInput && tags && tags.length > 0) {
+      recommendInput = message + "・" + tags.join("・");
+    }
+
     const recommendations = await recommendEventsWithKeyData(
-      message,
+      recommendInput,
       eventKeyData
     );
+
+    // eventKeyDataをidでマージして、全イベント情報をeventに含める
+    const eventMap = new Map(events.map((ev) => [ev.id, ev]));
+    const enrichedRecommendations = recommendations.map((rec) => ({
+      ...rec,
+      event: {
+        ...eventMap.get(rec.event.id),
+        ...rec.event,
+      },
+    }));
+
+    if (!enrichedRecommendations || enrichedRecommendations.length === 0) {
+      res.status(200).json({
+        query: recommendInput,
+        recommendations: [],
+        message:
+          "ご希望に合うイベントが見つかりませんでした。条件を変えて再度お試しください。",
+      });
+      return;
+    }
 
     // 開発用ログ
     if (process.env.NODE_ENV !== "production") {
       console.log(
-        `[recommendByMessage] message=\"${message}\" recommendations:\n`,
-        JSON.stringify(recommendations, null, 2)
+        `[recommendByMessage] message/tags=\"${recommendInput}\" recommendations:\n`,
+        JSON.stringify(enrichedRecommendations, null, 2)
       );
     }
 
-    res.json({ query: message, recommendations });
+    res.json({
+      query: recommendInput,
+      recommendations: enrichedRecommendations,
+    });
     return;
   } catch (err) {
     next(err);
