@@ -23,9 +23,9 @@ export interface UserInfo {
  * LLMによって推薦されたイベントの型定義
  */
 export interface LLMRecommendedEvent {
-  eventId: string;
-  title: string;
-  relevanceScore: number;
+  eventId?: string;
+  title?: string;
+  relevanceScore?: number;
 }
 
 /**
@@ -209,20 +209,24 @@ export const recommendEventsByQuery = async (
     // 4. イベントの処理（取得したイベントが10個以上の場合のみランキング付けを行う）
     let rankedEvents;
     const LLM_MAX_EVENTS = 10; // LLMに渡す最大イベント数
-    
+
     if (events.length <= LLM_MAX_EVENTS) {
       // 10個以下の場合はランキング付けせずにそのまま使用
-      console.log(`イベント数が${events.length}個で${LLM_MAX_EVENTS}個以下のため、ランキング付けをスキップします`);
-      
+      console.log(
+        `イベント数が${events.length}個で${LLM_MAX_EVENTS}個以下のため、ランキング付けをスキップします`
+      );
+
       // RankedEvent形式に変換（スコアは計算しないが形式を合わせる必要がある）
-      rankedEvents = events.map(event => ({
+      rankedEvents = events.map((event) => ({
         event,
         score: 1, // ダミースコア
-        matchedKeywords: [] // マッチしたキーワードは計算しない
+        matchedKeywords: [], // マッチしたキーワードは計算しない
       }));
     } else {
       // 10個以上の場合はキーワードマッチングでランキング付け
-      console.log(`イベント数が${events.length}個で${LLM_MAX_EVENTS}個以上のため、ランキング付けを行います`);
+      console.log(
+        `イベント数が${events.length}個で${LLM_MAX_EVENTS}個以上のため、ランキング付けを行います`
+      );
       rankedEvents = rankEventsByKeywordMatch(
         events,
         keywords,
@@ -400,11 +404,14 @@ ${formatInstructions}
       );
 
       // フォールバック処理：上位5件のイベントを選択
-      recommendedEvents = rankedEvents.slice(0, 5).map((rankedEvent) => ({
-        eventId: rankedEvent.event.id,
-        title: rankedEvent.event.title,
-        relevanceScore: Math.min(Math.round(rankedEvent.score * 10), 100), // スコアを0-100に変換
-      }));
+      recommendedEvents = rankedEvents.slice(0, 5).map(
+        (rankedEvent, index) =>
+          ({
+            eventId: rankedEvent.event.id || `event-${index}`,
+            title: rankedEvent.event.title || `イベント${index + 1}`,
+            relevanceScore: Math.min(Math.round(rankedEvent.score * 10), 100), // スコアを0-100に変換
+          } as LLMRecommendedEvent)
+      );
     }
 
     return recommendedEvents;
