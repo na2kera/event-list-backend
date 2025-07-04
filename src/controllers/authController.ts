@@ -183,3 +183,74 @@ export const syncUser = async (req: Request, res: Response) => {
     });
   }
 };
+
+// テストユーザー用の簡単なログイン機能
+export const testLogin = async (req: Request, res: Response) => {
+  console.log("--- Starting test user login ---");
+  console.log("Received credentials:", { email: req.body.email });
+
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      console.error("Login failed: Missing email or password");
+      return res
+        .status(400)
+        .json({ error: "Bad Request: Missing email or password" });
+    }
+
+    // テストユーザーのメールアドレスと固定パスワードをチェック
+    const testUserEmails = [
+      "test@example.com",
+      "admin@example.com",
+      "developer@example.com",
+    ];
+
+    const testPassword = "testpassword123"; // 固定のテストパスワード
+
+    if (!testUserEmails.includes(email) || password !== testPassword) {
+      console.error("Login failed: Invalid credentials");
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // データベースからユーザーを取得
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        image: true,
+        stack: true,
+        level: true,
+        place: true,
+        tag: true,
+        goal: true,
+        affiliation: true,
+      },
+    });
+
+    if (!user) {
+      console.error("Login failed: User not found in database");
+      return res.status(401).json({ error: "User not found" });
+    }
+
+    console.log(`--- Test user login successful for: ${user.email} ---`);
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        image: user.image,
+      },
+    });
+  } catch (error) {
+    console.error("--- Error during test user login ---");
+    console.error("Error:", error);
+    res.status(500).json({
+      error: "Failed to login test user",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
