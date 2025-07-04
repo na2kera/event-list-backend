@@ -12,6 +12,9 @@ COPY . ./
 # Generate Prisma Client
 RUN npx prisma generate
 
+# Set Node.js memory limit for build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # Build the application
 RUN npm run build
 

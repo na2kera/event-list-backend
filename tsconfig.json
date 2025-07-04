@@ -12,7 +12,9 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": ["node"],
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo"
   },
   "include": ["src/**/*", "src/utils/eventRag.ts"],
   "exclude": ["node_modules", "dist", "src/functions", "src/tests"]
