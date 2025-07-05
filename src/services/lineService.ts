@@ -145,7 +145,10 @@ export const sendEventCarouselToUser = async (
     });
 
     // カルーセルメッセージを作成
-    const carouselMessage = createEventRecommendlMessage(eventsWithBookmarkStatus, userId);
+    const carouselMessage = createEventRecommendlMessage(
+      eventsWithBookmarkStatus,
+      userId
+    );
 
     // LINE Messaging APIを使用してカルーセルを送信
     const response = await axios.post(
@@ -537,5 +540,97 @@ export const sendEventReminders = async () => {
         error instanceof Error ? error.message : String(error)
       }`
     );
+  }
+};
+
+/**
+ * 興味タグごとにイベントカルーセルをLINEに送信する
+ * @param userId ユーザーID
+ * @param tagRecommendations タグごとのレコメンド結果配列
+ * @returns 送信結果
+ */
+export const sendEventCarouselByTagsToUser = async (
+  userId: string,
+  tagRecommendations: { tag: string; recommendations: any[] }[]
+) => {
+  try {
+    // ユーザーIDでデータベースからユーザーを検索
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new Error(`ユーザー(${userId})が見つかりません`);
+    }
+
+    // ユーザーのブックマーク情報を取得
+    const allEventIds = tagRecommendations.flatMap((tagRec) =>
+      tagRec.recommendations.map((rec) => rec.event.id)
+    );
+
+    const bookmarks = await prisma.bookmark.findMany({
+      where: {
+        userId: userId,
+        eventId: {
+          in: allEventIds,
+        },
+      },
+      select: {
+        eventId: true,
+      },
+    });
+    const bookmarkedEventIds = new Set(bookmarks.map((b) => b.eventId));
+
+    // LINE Messaging APIを使用してタグごとにカルーセルを送信
+    const messages = [];
+
+    for (const tagRec of tagRecommendations) {
+      if (tagRec.recommendations.length === 0) continue;
+
+      // イベントデータにブックマーク状態を追加
+      const eventsWithBookmarkStatus = tagRec.recommendations.map((rec) => {
+        const isBookmarked = bookmarkedEventIds.has(rec.event.id);
+        return { ...rec.event, isBookmarked };
+      });
+
+      // カルーセルメッセージを作成
+      const carouselMessage = createEventRecommendlMessage(
+        eventsWithBookmarkStatus,
+        userId
+      );
+
+      messages.push({
+        type: "text",
+        text: `【${tagRec.tag}】のおすすめイベント`,
+      });
+      messages.push(carouselMessage);
+    }
+
+    if (messages.length === 0) {
+      throw new Error("送信するイベントが見つかりません");
+    }
+
+    const response = await axios.post(
+      LINE_MESSAGING_API,
+      {
+        to: user.lineId,
+        messages: messages,
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
+        },
+      }
+    );
+
+    return {
+      success: true,
+      message: "タグ別イベント情報がLINEで送信されました",
+      response: response.data,
+    };
+  } catch (error) {
+    console.error("タグ別イベント情報のLINE送信に失敗しました:", error);
+    throw error;
   }
 };

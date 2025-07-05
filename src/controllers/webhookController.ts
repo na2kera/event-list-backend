@@ -2,7 +2,9 @@ import { Request, Response, RequestHandler } from "express";
 import {
   sendLineNotificationToUser,
   sendEventCarouselToUser,
+  sendEventCarouselByTagsToUser,
   addBookmarkFromLine,
+  processLineAuthentication,
   sendEventReminders,
 } from "../services/lineService";
 import {
@@ -94,7 +96,7 @@ const handlePostbackEvent = async (event: any, lineUserId: string) => {
     if (action === "bookmark") {
       try {
         // ★ 内部ユーザーID (user.id) を使うように修正
-        const result = await addBookmarkFromLine(user.id, eventId);
+        const result = await addBookmarkFromLine(lineUserId, eventId);
 
         // ユーザーに結果を通知
         await sendLineNotificationToUser(
@@ -224,15 +226,22 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
         }
 
         // 興味タグごとにレコメンド（recommendController.tsと同じロジック）
-        let allEventIds: string[] = [];
+        const results: { tag: string; recommendations: any[] }[] = [];
         for (const tag of tags) {
           const recs = await recommendEventsWithKeyData(tag, eventKeyData);
-          allEventIds.push(...recs.map((rec) => rec.event.id));
+          // event.idでDBイベント情報をマージ
+          const eventMap = new Map(events.map((ev: any) => [ev.id, ev]));
+          const enrichedRecs = recs.map((rec) => ({
+            ...rec,
+            event: {
+              ...eventMap.get(rec.event.id),
+              ...rec.event,
+            },
+          }));
+          results.push({ tag, recommendations: enrichedRecs });
         }
-        // 重複排除
-        allEventIds = [...new Set(allEventIds)];
 
-        if (allEventIds.length === 0) {
+        if (results.length === 0) {
           await sendLineNotificationToUser(
             lineUserId,
             "ご希望に合うイベントが見つかりませんでした。条件を変えて再度お試しください。"
@@ -240,18 +249,83 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           return;
         }
 
-        // イベントカルーセルを送信
-        await sendEventCarouselToUser(user.id, allEventIds);
-        await sendLineNotificationToUser(
-          lineUserId,
-          "興味タグベースのレコメンド結果です。"
-        );
+        // 興味タグごとにカルーセルを送信
+        await sendEventCarouselByTagsToUser(user.id, results);
+        await sendLineNotificationToUser(lineUserId, "レコメンド結果です。");
         console.log(`ユーザー ${lineUserId} にレコメンド結果を送信しました`);
       } catch (error) {
         console.error("レコメンド処理エラー:", error);
         await sendLineNotificationToUser(
           lineUserId,
           "レコメンドの取得中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
+        );
+      }
+    }
+
+    // 「ブックマーク」というテキストを受け取った場合の処理
+    else if (messageText === "ブックマーク") {
+      try {
+        console.log(
+          `ユーザー ${lineUserId} からブックマーク一覧リクエストを受信しました`
+        );
+
+        // ユーザー情報取得（lineUserIdから内部userIdを取得）
+        const user = await getUserByLineId(lineUserId);
+        if (!user) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "ユーザー情報が見つかりません。まずはプロフィール設定をお願いします。"
+          );
+          return;
+        }
+
+        // ブックマーク一覧を取得
+        const bookmarks = await prisma.bookmark.findMany({
+          where: {
+            userId: user.id,
+          },
+          include: {
+            Event: {
+              include: {
+                Organization: true,
+                EventCategory: {
+                  include: {
+                    Category: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
+
+        if (bookmarks.length === 0) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "ブックマークしたイベントがありません。イベントをブックマークすると、ここで確認できます。"
+          );
+          return;
+        }
+
+        // ブックマークしたイベントのIDリストを取得
+        const bookmarkedEventIds = bookmarks.map((b) => b.Event.id);
+
+        // ブックマーク一覧をカルーセルで送信
+        await sendEventCarouselToUser(user.id, bookmarkedEventIds);
+        await sendLineNotificationToUser(
+          lineUserId,
+          `ブックマークしたイベント一覧（${bookmarks.length}件）です。`
+        );
+        console.log(
+          `ユーザー ${lineUserId} にブックマーク一覧を送信しました: ${bookmarks.length}件`
+        );
+      } catch (error) {
+        console.error("ブックマーク一覧取得エラー:", error);
+        await sendLineNotificationToUser(
+          lineUserId,
+          "ブックマーク一覧の取得中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
         );
       }
     }
@@ -361,10 +435,7 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           return;
         }
         await sendEventCarouselToUser(user.id, eventIds);
-        await sendLineNotificationToUser(
-          lineUserId,
-          "keyData（キーフレーズ/キーセンテンス）ベースのテキストレコメンド結果です。"
-        );
+        await sendLineNotificationToUser(lineUserId, "レコメンド結果です。");
         console.log(
           `ユーザー ${lineUserId} にkeyDataベースのテキストレコメンド結果を送信しました`
         );

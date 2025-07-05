@@ -154,20 +154,24 @@ export const recommendEventsByKeyword = async (
     // 2. イベントの処理（取得したイベントが10個以上の場合のみランキング付けを行う）
     let rankedEvents;
     const LLM_MAX_EVENTS = 10; // LLMに渡す最大イベント数
-    
+
     if (events.length <= LLM_MAX_EVENTS) {
       // 10個以下の場合はランキング付けせずにそのまま使用
-      console.log(`イベント数が${events.length}個で${LLM_MAX_EVENTS}個以下のため、ランキング付けをスキップします`);
-      
+      console.log(
+        `イベント数が${events.length}個で${LLM_MAX_EVENTS}個以下のため、ランキング付けをスキップします`
+      );
+
       // RankedEvent形式に変換（スコアは計算しないが形式を合わせる必要がある）
-      rankedEvents = events.map(event => ({
+      rankedEvents = events.map((event) => ({
         event,
         score: 1, // ダミースコア
-        matchedKeywords: [] // マッチしたキーワードは計算しない
+        matchedKeywords: [], // マッチしたキーワードは計算しない
       }));
     } else {
       // 10個以上の場合はキーワードマッチングでランキング付け
-      console.log(`イベント数が${events.length}個で${LLM_MAX_EVENTS}個以上のため、ランキング付けを行います`);
+      console.log(
+        `イベント数が${events.length}個で${LLM_MAX_EVENTS}個以上のため、ランキング付けを行います`
+      );
       rankedEvents = rankEventsByKeywordMatch(
         events,
         keywords,
