@@ -396,9 +396,9 @@ export const filterEventsWithLLM = async (
     temperature: 0,
   });
 
-  // 上位候補のみ渡す（スコア0.013以上にフィルタリング）
+  // 上位候補のみ渡す（スコアしきい値フィルタリングをコメントアウト）
   const candidates = rankedEvents
-    .filter((event) => event.score >= 0.013)
+    // .filter((event) => event.score >= 0.013) // スコアしきい値をコメントアウト
     .slice(0, topK)
     .map(({ event }) => ({
       id: event.id,

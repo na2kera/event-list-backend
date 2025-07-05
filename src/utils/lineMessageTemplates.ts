@@ -1,5 +1,5 @@
-import { Event, Bookmark } from "@prisma/client"; 
-import { EventWithBookmarkStatus } from "../types/lineTypes"; 
+import { Event, Bookmark } from "@prisma/client";
+import { EventWithBookmarkStatus } from "../types/lineTypes";
 
 /**
  * イベントカルーセルメッセージを生成する
@@ -14,7 +14,9 @@ export const createEventRecommendlMessage = (
   // イベントごとにバブルを作成
   const bubbles = events.map((event) => {
     // ブックマークボタンのラベルとアクションデータを動的に設定
-    const bookmarkLabel = event.isBookmarked ? "ブックマーク解除" : "ブックマークに追加";
+    const bookmarkLabel = event.isBookmarked
+      ? "ブックマーク解除"
+      : "ブックマークに追加";
     const bookmarkAction = event.isBookmarked ? "unbookmark" : "bookmark";
     const bookmarkData = `action=${bookmarkAction}&eventId=${event.id}&userId=${userId}`;
 
@@ -137,7 +139,7 @@ export const createEventRecommendlMessage = (
           {
             type: "button",
             style: "secondary",
-            color: "#FF6B6E", // ピンク系
+            color: "#FFB347", // 黄色っぽい色（アンバー）
             height: "sm",
             action: {
               type: "postback",
@@ -155,17 +157,32 @@ export const createEventRecommendlMessage = (
                 contents: [
                   {
                     type: "text",
-                    text: event.format === "ONLINE" ? "オンライン" : event.format === "HYBRID" ? "ハイブリッド" : "オフライン",
+                    text:
+                      event.format === "ONLINE"
+                        ? "オンライン"
+                        : event.format === "HYBRID"
+                        ? "ハイブリッド"
+                        : "オフライン",
                     size: "xs",
-                    color: event.format === "ONLINE" ? "#1DB446" : event.format === "HYBRID" ? "#9932CC" : "#FF8C00",
+                    color:
+                      event.format === "ONLINE"
+                        ? "#1DB446"
+                        : event.format === "HYBRID"
+                        ? "#9932CC"
+                        : "#FF8C00",
                     align: "center",
-                    weight: "bold"
-                  }
+                    weight: "bold",
+                  },
                 ],
                 width: "60%",
-                backgroundColor: event.format === "ONLINE" ? "#E8F9E9" : event.format === "HYBRID" ? "#F1E8F9" : "#F9F1E8",
+                backgroundColor:
+                  event.format === "ONLINE"
+                    ? "#E8F9E9"
+                    : event.format === "HYBRID"
+                    ? "#F1E8F9"
+                    : "#F9F1E8",
                 cornerRadius: "4px",
-                paddingAll: "2px"
+                paddingAll: "2px",
               },
               {
                 type: "box",
@@ -177,18 +194,18 @@ export const createEventRecommendlMessage = (
                     size: "xs",
                     color: "#666666",
                     align: "center",
-                    weight: "bold"
-                  }
+                    weight: "bold",
+                  },
                 ],
                 width: "40%",
                 backgroundColor: "#F5F5F5",
                 cornerRadius: "4px",
-                paddingAll: "2px"
-              }
+                paddingAll: "2px",
+              },
             ],
             spacing: "xs",
-            margin: "md"
-          }
+            margin: "md",
+          },
         ],
         flex: 0,
       },
