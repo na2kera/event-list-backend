@@ -20,6 +20,9 @@ export const createEventRecommendlMessage = (
     const bookmarkAction = event.isBookmarked ? "unbookmark" : "bookmark";
     const bookmarkData = `action=${bookmarkAction}&eventId=${event.id}&userId=${userId}`;
 
+    // ブックマーク状態に応じてボタンの色を設定
+    const bookmarkButtonColor = event.isBookmarked ? "#FF6B6E" : "#FFB347"; // ブックマーク済みは赤、未ブックマークは黄色っぽい
+
     return {
       type: "bubble",
       hero: {
@@ -139,7 +142,7 @@ export const createEventRecommendlMessage = (
           {
             type: "button",
             style: "secondary",
-            color: "#FFB347", // 黄色っぽい色（アンバー）
+            color: bookmarkButtonColor, // ブックマーク状態に応じて色を動的に設定
             height: "sm",
             action: {
               type: "postback",
