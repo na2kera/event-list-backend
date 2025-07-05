@@ -157,50 +157,16 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
   try {
     const messageText = event.message.text;
 
-    // 「レコメンド１」というテキストを受け取った場合の処理（HyDEベース）
-    if (messageText === "レコメンド1") {
+    // 「レコメンド」というテキストを受け取った場合の処理（recommendController.tsのロジックを使用）
+    if (messageText === "レコメンド") {
       try {
         console.log(
           `ユーザー ${lineUserId} からレコメンドリクエストを受信しました`
         );
 
+        // ユーザー情報取得（lineUserIdから内部userIdを取得）
         const user = await getUserByLineId(lineUserId);
-        if (!user) {
-          throw new Error(`ユーザー ${lineUserId} が見つかりません。`);
-        }
-
-        // HyDEベースのレコメンドAPIを呼び出す
-        const eventIds = await recommendEventsByHyDE(user.id);
-
-        // イベントカルーセルを送信
-        await sendEventCarouselToUser(user.id, eventIds);
-
-        // ユーザーにレコメンドタイプを通知
-        await sendLineNotificationToUser(
-          lineUserId,
-          "ベクトル検索（HyDE）によるレコメンド結果です。"
-        );
-
-        console.log(`ユーザー ${lineUserId} にレコメンド結果を送信しました`);
-      } catch (error) {
-        console.error("レコメンド処理エラー:", error);
-
-        // エラーが発生した場合はユーザーに通知
-        await sendLineNotificationToUser(
-          lineUserId,
-          "レコメンドの取得中にエラーが発生しました。しばらく経ってからもう一度お試しください。"
-        );
-      }
-    }
-
-    // 「レコメンド２」というテキストを受け取った場合の処理（keyDataベースに統一）
-    else if (messageText === "レコメンド2") {
-      try {
-        console.log(
-          `ユーザー ${lineUserId} からkeyDataベースのレコメンドリクエストを受信しました`
-        );
-        // ユーザー情報取得
-        const user = await getUserWithDetailsById(lineUserId);
+        console.log("user", user);
         if (!user) {
           await sendLineNotificationToUser(
             lineUserId,
@@ -208,7 +174,18 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           );
           return;
         }
-        const tags = (user.tag as any) || [];
+
+        // recommendController.tsのrecommendByUserロジックを実装
+        const userDetails = await getUserWithDetailsById(user.id);
+        if (!userDetails) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "ユーザー詳細情報が見つかりません。まずはプロフィール設定をお願いします。"
+          );
+          return;
+        }
+
+        const tags: string[] = (userDetails.tag as any) || [];
         if (tags.length === 0) {
           await sendLineNotificationToUser(
             lineUserId,
@@ -216,8 +193,9 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           );
           return;
         }
+
         // 場所・形式でイベントをフィルタ
-        const locationRaw = (user.place || "").toString();
+        const locationRaw = (userDetails.place || "").toString();
         const locLower = locationRaw.toLowerCase();
         const filterOpts: any = {};
         if (locationRaw) {
@@ -227,6 +205,7 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
             filterOpts.location = locationRaw;
           }
         }
+
         const events = await getFilteredEvents(filterOpts);
         const eventKeyData = events.map((ev: any) => ({
           id: ev.id,
@@ -235,6 +214,7 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           keyPhrases: ev.keyPhrases || [],
           keySentences: ev.keySentences || [],
         }));
+
         if (eventKeyData.length === 0) {
           await sendLineNotificationToUser(
             lineUserId,
@@ -242,7 +222,8 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           );
           return;
         }
-        // 興味タグごとにレコメンド
+
+        // 興味タグごとにレコメンド（recommendController.tsと同じロジック）
         let allEventIds: string[] = [];
         for (const tag of tags) {
           const recs = await recommendEventsWithKeyData(tag, eventKeyData);
@@ -250,6 +231,7 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
         }
         // 重複排除
         allEventIds = [...new Set(allEventIds)];
+
         if (allEventIds.length === 0) {
           await sendLineNotificationToUser(
             lineUserId,
@@ -257,15 +239,14 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           );
           return;
         }
+
         // イベントカルーセルを送信
         await sendEventCarouselToUser(user.id, allEventIds);
         await sendLineNotificationToUser(
           lineUserId,
-          "keyData（キーフレーズ/キーセンテンス）ベースのレコメンド結果です。"
+          "興味タグベースのレコメンド結果です。"
         );
-        console.log(
-          `ユーザー ${lineUserId} にkeyDataベースのレコメンド結果を送信しました`
-        );
+        console.log(`ユーザー ${lineUserId} にレコメンド結果を送信しました`);
       } catch (error) {
         console.error("レコメンド処理エラー:", error);
         await sendLineNotificationToUser(
@@ -322,8 +303,8 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
     else {
       try {
         console.log(`ユーザー ${lineUserId} からの質問: ${messageText}`);
-        // ユーザー情報を取得
-        const user = await getUserWithDetailsById(lineUserId);
+        // ユーザー情報を取得（lineUserIdから内部userIdを取得）
+        const user = await getUserByLineId(lineUserId);
         if (!user) {
           await sendLineNotificationToUser(
             lineUserId,
@@ -331,8 +312,17 @@ const handleTextMessageEvent = async (event: any, lineUserId: string) => {
           );
           return;
         }
+        // 内部userIdで詳細情報を取得
+        const userDetails = await getUserWithDetailsById(user.id);
+        if (!userDetails) {
+          await sendLineNotificationToUser(
+            lineUserId,
+            "ユーザー詳細情報が見つかりません。まずはプロフィール設定をお願いします。"
+          );
+          return;
+        }
         // 場所・形式でイベントをフィルタ
-        const locationRaw = (user.place || "").toString();
+        const locationRaw = (userDetails.place || "").toString();
         const locLower = locationRaw.toLowerCase();
         const filterOpts: any = {};
         if (locationRaw) {
